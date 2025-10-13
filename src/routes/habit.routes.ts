@@ -1,0 +1,25 @@
+import express, { Router } from 'express';
+import * as habitController from '../controllers/habit.controller';
+import { authMiddleware } from '../middleware/auth.middleware';
+
+const router: Router = express.Router();
+
+// All habit routes should be protected
+router.use(authMiddleware);
+
+// Get all habits
+router.get('/', habitController.getAllHabits);
+
+// Get a single habit by ID
+router.get('/:id', habitController.getHabitById);
+
+// Create a new habit
+router.post('/', habitController.createHabit);
+
+// Update a habit
+router.put('/:id', habitController.updateHabit);
+
+// Delete a habit
+router.delete('/:id', habitController.deleteHabit);
+
+export default router;
