@@ -1,16 +1,14 @@
 import { Request, Response } from 'express';
 import pool from '../db';
-import { LifeChallenge } from '../models/life-challenge.model';
+import { LifeChallenge, LifeChallengeModel } from '../models/life-challenge.model';
 import { User } from '../models/user.model';
 import { RowDataPacket } from 'mysql2';
-import { LifeHistory } from '../models/life-history.model';
-import { LifeChallengeRedemption } from '../models/life-challenge-redemption.model';
 
 // GET /api/life-challenges
 export const getLifeChallenges = async (req: Request, res: Response) => {
   try {
-    const [rows] = await pool.query<RowDataPacket[]>('SELECT * FROM LIFE_CHALLENGES WHERE is_active = TRUE');
-    res.json(rows as LifeChallenge[]);
+    const rows = await LifeChallengeModel.getAllActive();
+    res.json(rows);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error fetching life challenges' });
@@ -46,6 +44,12 @@ export const redeemLifeChallenge = async (req: Request, res: Response) => {
 
     // 3. Get user's current lives
     const [userRows] = await connection.query<RowDataPacket[]>('SELECT lives, max_lives FROM USERS WHERE id = ?', [userId]);
+
+    if (userRows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'User not found' });
+    }
+
     const user = userRows[0] as User;
 
     // 4. Calculate new lives total

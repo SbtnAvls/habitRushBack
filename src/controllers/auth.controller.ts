@@ -7,6 +7,14 @@ export const register = async (req: Request, res: Response) => {
   const { name, email, password } = req.body;
 
   try {
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: 'name, email and password are required' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+    }
+
     const existingUser = await UserModel.findByEmail(email);
     if (existingUser) {
       return res.status(400).json({ message: 'User already exists' });
@@ -44,6 +52,10 @@ export const login = async (req: Request, res: Response) => {
   const { email, password } = req.body;
 
   try {
+    if (!email || !password) {
+      return res.status(400).json({ message: 'email and password are required' });
+    }
+
     const user = await UserModel.findByEmail(email);
     if (!user) {
       return res.status(400).json({ message: 'Invalid credentials' });
@@ -60,6 +72,28 @@ export const login = async (req: Request, res: Response) => {
 
     res.json({ token });
   } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+export const getCurrentUser = async (req: Request, res: Response) => {
+  const userId = (req as any).user?.id;
+
+  if (!userId) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
+
+  try {
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password_hash, ...userWithoutPassword } = user;
+    res.json(userWithoutPassword);
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ message: 'Server error' });
   }
 };

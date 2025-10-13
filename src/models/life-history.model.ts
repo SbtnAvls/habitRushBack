@@ -1,37 +1,56 @@
+import { RowDataPacket } from 'mysql2';
+import { v4 as uuidv4 } from 'uuid';
 import pool from '../db';
 
 export type LifeHistoryReason = 'habit_missed' | 'challenge_completed' | 'life_challenge_redeemed';
 
-export interface LifeHistory {
+export interface LifeHistory extends RowDataPacket {
   id: string;
   user_id: string;
   lives_change: number;
   current_lives: number;
   reason: LifeHistoryReason;
-  related_habit_id?: string;
-  related_user_challenge_id?: string;
-  related_life_challenge_id?: string;
+  related_habit_id: string | null;
+  related_user_challenge_id: string | null;
+  related_life_challenge_id: string | null;
   created_at: Date;
 }
 
 export class LifeHistoryModel {
 
   static async getForUser(userId: string): Promise<LifeHistory[]> {
-    const [rows] = await pool.query<any[]>(
+    const [rows] = await pool.query<RowDataPacket[]>(
       'SELECT * FROM LIFE_HISTORY WHERE user_id = ? ORDER BY created_at DESC',
       [userId]
     );
-    return rows;
+    return rows as LifeHistory[];
   }
 
-  static async create(userId: string, livesChange: number, currentLives: number, reason: LifeHistoryReason, relatedId?: { habitId?: string; userChallengeId?: string; lifeChallengeId?: string }): Promise<LifeHistory> {
-    const [result] = await pool.query(
-      'INSERT INTO LIFE_HISTORY (user_id, lives_change, current_lives, reason, related_habit_id, related_user_challenge_id, related_life_challenge_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [userId, livesChange, currentLives, reason, relatedId?.habitId, relatedId?.userChallengeId, relatedId?.lifeChallengeId]
+  static async create(
+    userId: string,
+    livesChange: number,
+    currentLives: number,
+    reason: LifeHistoryReason,
+    relatedId?: { habitId?: string; userChallengeId?: string; lifeChallengeId?: string }
+  ): Promise<LifeHistory> {
+    const id = uuidv4();
+    await pool.query(
+      `INSERT INTO LIFE_HISTORY 
+        (id, user_id, lives_change, current_lives, reason, related_habit_id, related_user_challenge_id, related_life_challenge_id) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        userId,
+        livesChange,
+        currentLives,
+        reason,
+        relatedId?.habitId ?? null,
+        relatedId?.userChallengeId ?? null,
+        relatedId?.lifeChallengeId ?? null,
+      ]
     );
-    const id = (result as any).insertId;
-    const [rows] = await pool.query<any[]>('SELECT * FROM LIFE_HISTORY WHERE id = ?', [id]);
-    return rows[0];
+    const [rows] = await pool.query<RowDataPacket[]>('SELECT * FROM LIFE_HISTORY WHERE id = ?', [id]);
+    return rows[0] as LifeHistory;
   }
 
 }

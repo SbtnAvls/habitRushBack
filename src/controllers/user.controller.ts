@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import { UserModel, User } from '../models/user.model';
 
+const ALLOWED_THEMES = ['light', 'dark'];
+const ALLOWED_FONT_SIZES = ['small', 'medium', 'large'];
+
 // A middleware to get the user from the token would be ideal here
 // For now, we will pass the user id in the request body or params for simplicity
 
@@ -31,6 +34,18 @@ export const updateMe = async (req: Request, res: Response) => {
 
   if (!userId) {
     return res.status(401).json({ message: 'Not authenticated' });
+  }
+
+  if (!name && !theme && !font_size) {
+    return res.status(400).json({ message: 'At least one field (name, theme, font_size) is required' });
+  }
+
+  if (theme && !ALLOWED_THEMES.includes(theme)) {
+    return res.status(400).json({ message: 'Invalid theme provided' });
+  }
+
+  if (font_size && !ALLOWED_FONT_SIZES.includes(font_size)) {
+    return res.status(400).json({ message: 'Invalid font_size provided' });
   }
 
   try {

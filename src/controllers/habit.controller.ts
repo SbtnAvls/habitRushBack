@@ -1,9 +1,15 @@
 import { Request, Response } from 'express';
 import * as habitModel from '../models/habit.model';
 
+const ALLOWED_FREQUENCY_TYPES = ['daily', 'weekly', 'custom'];
+const ALLOWED_PROGRESS_TYPES = ['yes_no', 'time', 'count'];
+
 // Get all habits for the current user
 export const getAllHabits = async (req: Request, res: Response) => {
   const userId = (req as any).user?.id;
+  if (!userId) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
   try {
     const habits = await habitModel.findHabitsByUserId(userId);
     res.json(habits);
@@ -15,6 +21,9 @@ export const getAllHabits = async (req: Request, res: Response) => {
 // Get a single habit by ID
 export const getHabitById = async (req: Request, res: Response) => {
   const userId = (req as any).user?.id;
+  if (!userId) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
   const { id } = req.params;
   try {
     const habit = await habitModel.findHabitById(id, userId);
@@ -30,9 +39,24 @@ export const getHabitById = async (req: Request, res: Response) => {
 // Create a new habit
 export const createHabit = async (req: Request, res: Response) => {
   const userId = (req as any).user?.id;
+  if (!userId) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
   const { name, description, target_date, frequency_type, frequency_days_of_week, progress_type } = req.body;
 
   try {
+    if (!name || !frequency_type || !progress_type) {
+      return res.status(400).json({ message: 'name, frequency_type and progress_type are required' });
+    }
+
+    if (!ALLOWED_FREQUENCY_TYPES.includes(frequency_type)) {
+      return res.status(400).json({ message: 'Invalid frequency_type provided' });
+    }
+
+    if (!ALLOWED_PROGRESS_TYPES.includes(progress_type)) {
+      return res.status(400).json({ message: 'Invalid progress_type provided' });
+    }
+
     const newHabit = await habitModel.createHabit({
       user_id: userId,
       name,
@@ -55,6 +79,9 @@ export const createHabit = async (req: Request, res: Response) => {
 // Update a habit
 export const updateHabit = async (req: Request, res: Response) => {
   const userId = (req as any).user?.id;
+  if (!userId) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
   const { id } = req.params;
   const updates: Partial<habitModel.Habit> = req.body;
 
@@ -66,6 +93,14 @@ export const updateHabit = async (req: Request, res: Response) => {
 
     if (updates.frequency_days_of_week && Array.isArray(updates.frequency_days_of_week)) {
       updates.frequency_days_of_week = updates.frequency_days_of_week.join(',');
+    }
+
+    if (updates.frequency_type && !ALLOWED_FREQUENCY_TYPES.includes(updates.frequency_type)) {
+      return res.status(400).json({ message: 'Invalid frequency_type provided' });
+    }
+
+    if (updates.progress_type && !ALLOWED_PROGRESS_TYPES.includes(updates.progress_type)) {
+      return res.status(400).json({ message: 'Invalid progress_type provided' });
     }
 
     updates.updated_at = new Date();
@@ -80,6 +115,9 @@ export const updateHabit = async (req: Request, res: Response) => {
 // Delete a habit (soft delete)
 export const deleteHabit = async (req: Request, res: Response) => {
   const userId = (req as any).user?.id;
+  if (!userId) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
   const { id } = req.params;
 
   try {

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { ChallengeModel } from '../models/challenge.model';
 import { UserChallengeModel } from '../models/user-challenge.model';
+import { findHabitById } from '../models/habit.model';
 
 export class ChallengeController {
 
@@ -35,10 +36,15 @@ export class ChallengeController {
         return res.status(400).json({ message: 'habitId is required' });
       }
 
-      // Here you might want to add more validation, e.g., 
-      // - check if the challenge exists
-      // - check if the habit belongs to the user
-      // - check if the challenge is not already assigned to that habit
+      const challenge = await ChallengeModel.findById(challengeId);
+      if (!challenge || challenge.is_active === false) {
+        return res.status(404).json({ message: 'Challenge not found or inactive.' });
+      }
+
+      const habit = await findHabitById(habitId, userId);
+      if (!habit) {
+        return res.status(404).json({ message: 'Habit not found.' });
+      }
 
       const newUserChallenge = await UserChallengeModel.assign(userId, challengeId, habitId);
       res.status(201).json(newUserChallenge);

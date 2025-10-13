@@ -19,7 +19,17 @@ export class HabitCompletionController {
     try {
       const { habitId } = req.params;
       const userId = (req as any).user.id;
-      const completion = await HabitCompletion.createOrUpdate({ ...req.body, habit_id: habitId, user_id: userId });
+
+      const { date, completed, progress_type } = req.body;
+      if (!date || typeof completed === 'undefined' || !progress_type) {
+        return res.status(400).json({ message: 'date, completed and progress_type are required fields.' });
+      }
+
+      const completion = await HabitCompletion.createOrUpdate({
+        ...req.body,
+        habit_id: habitId,
+        user_id: userId,
+      });
       res.status(201).json(completion);
     } catch (error) {
       console.error(error);
@@ -31,6 +41,11 @@ export class HabitCompletionController {
     try {
       const { id } = req.params;
       const userId = (req as any).user.id;
+
+      if (!Object.prototype.hasOwnProperty.call(req.body, 'notes')) {
+        return res.status(400).json({ message: 'notes field is required to update a habit completion.' });
+      }
+
       const completion = await HabitCompletion.update(id, userId, req.body);
       if (!completion) {
         return res.status(404).json({ message: 'Habit completion not found' });
@@ -63,6 +78,9 @@ export class HabitCompletionController {
       const userId = (req as any).user.id;
       // Assuming image URL is in the body and there's a service to handle upload
       const { imageUrl, thumbnailUrl } = req.body;
+      if (!imageUrl) {
+        return res.status(400).json({ message: 'imageUrl is required.' });
+      }
       const image = await CompletionImage.create(id, userId, imageUrl, thumbnailUrl);
       res.status(201).json(image);
     } catch (error) {
