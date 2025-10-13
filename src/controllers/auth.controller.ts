@@ -1,20 +1,20 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import * as UserModel from '../models/user.model';
+import { UserModel } from '../models/user.model';
 
 export const register = async (req: Request, res: Response) => {
   const { name, email, password } = req.body;
 
   try {
-    const existingUser = await UserModel.findUserByEmail(email);
+    const existingUser = await UserModel.findByEmail(email);
     if (existingUser) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
     const password_hash = await bcrypt.hash(password, 10);
 
-    const newUser = await UserModel.createUser({
+    const newUser = await UserModel.create({
       name,
       email,
       password_hash,
@@ -44,7 +44,7 @@ export const login = async (req: Request, res: Response) => {
   const { email, password } = req.body;
 
   try {
-    const user = await UserModel.findUserByEmail(email);
+    const user = await UserModel.findByEmail(email);
     if (!user) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }

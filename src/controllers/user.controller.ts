@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import * as UserModel from '../models/user.model';
+import { UserModel, User } from '../models/user.model';
 
 // A middleware to get the user from the token would be ideal here
 // For now, we will pass the user id in the request body or params for simplicity
@@ -13,7 +13,7 @@ export const getMe = async (req: Request, res: Response) => {
   }
 
   try {
-    const user = await UserModel.findUserById(userId);
+    const user = await UserModel.findById(userId);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
@@ -34,20 +34,20 @@ export const updateMe = async (req: Request, res: Response) => {
   }
 
   try {
-    const user = await UserModel.findUserById(userId);
+    const user = await UserModel.findById(userId);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const updates: Partial<UserModel.User> = {};
+    const updates: Partial<User> = {};
     if (name) updates.name = name;
     if (theme) updates.theme = theme;
     if (font_size) updates.font_size = font_size;
     updates.updated_at = new Date();
 
-    await UserModel.updateUser(userId, updates);
+    await UserModel.update(userId, updates);
 
-    const updatedUser = await UserModel.findUserById(userId);
+    const updatedUser = await UserModel.findById(userId);
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password_hash, ...userWithoutPassword } = updatedUser!;
@@ -66,12 +66,12 @@ export const deleteMe = async (req: Request, res: Response) => {
     }
 
     try {
-        const user = await UserModel.findUserById(userId);
+        const user = await UserModel.findById(userId);
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        await UserModel.deleteUser(userId);
+        await UserModel.delete(userId);
 
         res.status(204).send();
     } catch (error) {

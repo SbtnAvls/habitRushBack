@@ -20,31 +20,38 @@ export interface User {
   updated_at: Date;
 }
 
-export const createUser = async (user: Omit<User, 'id' | 'created_at' | 'updated_at'>): Promise<User> => {
-  const newUser: User = {
-    id: uuidv4(),
-    ...user,
-    created_at: new Date(),
-    updated_at: new Date(),
-  };
-  await pool.query('INSERT INTO USERS SET ?', newUser);
-  return newUser;
-};
+export class UserModel {
+  static async create(user: Omit<User, 'id' | 'created_at' | 'updated_at'>): Promise<User> {
+    const newUser: User = {
+      id: uuidv4(),
+      ...user,
+      created_at: new Date(),
+      updated_at: new Date(),
+    };
+    await pool.query('INSERT INTO USERS SET ?', newUser);
+    return newUser;
+  }
 
-export const findUserByEmail = async (email: string): Promise<User | undefined> => {
-  const [rows] = await pool.query<RowDataPacket[]>('SELECT * FROM USERS WHERE email = ?', [email]);
-  return rows[0] as User | undefined;
-};
+  static async findByEmail(email: string): Promise<User | undefined> {
+    const [rows] = await pool.query<RowDataPacket[]>('SELECT * FROM USERS WHERE email = ?', [email]);
+    return rows[0] as User | undefined;
+  }
 
-export const findUserById = async (id: string): Promise<User | undefined> => {
-  const [rows] = await pool.query<RowDataPacket[]>('SELECT * FROM USERS WHERE id = ?', [id]);
-  return rows[0] as User | undefined;
-};
+  static async findById(id: string): Promise<User | undefined> {
+    const [rows] = await pool.query<RowDataPacket[]>('SELECT * FROM USERS WHERE id = ?', [id]);
+    return rows[0] as User | undefined;
+  }
 
-export const updateUser = async (id: string, updates: Partial<User>): Promise<void> => {
-  await pool.query('UPDATE USERS SET ? WHERE id = ?', [updates, id]);
-};
+  static async update(id: string, updates: Partial<User>): Promise<void> {
+    await pool.query('UPDATE USERS SET ? WHERE id = ?', [updates, id]);
+  }
 
-export const deleteUser = async (id: string): Promise<void> => {
-  await pool.query('DELETE FROM USERS WHERE id = ?', [id]);
-};
+  static async delete(id: string): Promise<void> {
+    await pool.query('DELETE FROM USERS WHERE id = ?', [id]);
+  }
+
+  static async updateLives(userId: string, newLives: number): Promise<void> {
+    await pool.query('UPDATE USERS SET lives = ? WHERE id = ?', [newLives, userId]);
+  }
+}
+

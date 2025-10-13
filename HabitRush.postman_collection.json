@@ -28,6 +28,7 @@
 								"{{baseUrl}}"
 							],
 							"path": [
+								"api",
 								"auth",
 								"register"
 							]
@@ -55,6 +56,7 @@
 								"{{baseUrl}}"
 							],
 							"path": [
+								"api",
 								"auth",
 								"login"
 							]
@@ -73,6 +75,7 @@
 								"{{baseUrl}}"
 							],
 							"path": [
+								"api",
 								"auth",
 								"logout"
 							]
@@ -98,18 +101,20 @@
 								}
 							]
 						},
-						                        "method": "GET",
-						                        "header": [],
-						                        "url": {
-						                            "raw": "{{baseUrl}}/api/users/me",
-						                            "host": [
-						                                "{{baseUrl}}"
-						                            ],
-						                            "path": [
-						                                "users",
-						                                "me"
-						                            ]
-						                        }					},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/users/me",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"me"
+							]
+						}
+					},
 					"response": []
 				},
 				{
@@ -137,11 +142,12 @@
 							}
 						},
 						"url": {
-							"raw": "{{baseUrl}}/users/me",
+							"raw": "{{baseUrl}}/api/users/me",
 							"host": [
 								"{{baseUrl}}"
 							],
 							"path": [
+								"api",
 								"users",
 								"me"
 							]
@@ -165,13 +171,44 @@
 						"method": "DELETE",
 						"header": [],
 						"url": {
-							"raw": "{{baseUrl}}/users/me",
+							"raw": "{{baseUrl}}/api/users/me",
 							"host": [
 								"{{baseUrl}}"
 							],
 							"path": [
+								"api",
 								"users",
 								"me"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get My League History",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/users/me/league-history",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"me",
+								"league-history"
 							]
 						}
 					},
@@ -179,166 +216,733 @@
 				}
 			]
 		},
-        {
-            "name": "Habits",
-            "item": [
-                {
-                    "name": "Get All Habits",
-                    "request": {
-                        "auth": {
-                            "type": "bearer",
-                            "bearer": [
-                                {
-                                    "key": "token",
-                                    "value": "{{authToken}}",
-                                    "type": "string"
-                                }
-                            ]
-                        },
-                        "method": "GET",
-                        "header": [],
-                        "url": {
-                            "raw": "{{baseUrl}}/habits",
-                            "host": [
-                                "{{baseUrl}}"
-                            ],
-                            "path": [
-                                "habits"
-                            ]
-                        }
-                    },
-                    "response": []
-                },
-                {
-                    "name": "Create Habit",
-                    "request": {
-                        "auth": {
-                            "type": "bearer",
-                            "bearer": [
-                                {
-                                    "key": "token",
-                                    "value": "{{authToken}}",
-                                    "type": "string"
-                                }
-                            ]
-                        },
-                        "method": "POST",
-                        "header": [],
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"name\": \"Read a book\",\n    \"description\": \"Read 10 pages of a book every day\",\n    \"frequency_type\": \"daily\",\n    \"progress_type\": \"yes_no\"\n}",
-                            "options": {
-                                "raw": {
-                                    "language": "json"
-                                }
-                            }
-                        },
-                        "url": {
-                            "raw": "{{baseUrl}}/habits",
-                            "host": [
-                                "{{baseUrl}}"
-                            ],
-                            "path": [
-                                "habits"
-                            ]
-                        }
-                    },
-                    "response": []
-                },
-                {
-                    "name": "Get Habit By Id",
-                    "request": {
-                        "auth": {
-                            "type": "bearer",
-                            "bearer": [
-                                {
-                                    "key": "token",
-                                    "value": "{{authToken}}",
-                                    "type": "string"
-                                }
-                            ]
-                        },
-                        "method": "GET",
-                        "header": [],
-                        "url": {
-                            "raw": "{{baseUrl}}/habits/your_habit_id",
-                            "host": [
-                                "{{baseUrl}}"
-                            ],
-                            "path": [
-                                "habits",
-                                "your_habit_id"
-                            ]
-                        }
-                    },
-                    "response": []
-                },
-                {
-                    "name": "Update Habit",
-                    "request": {
-                        "auth": {
-                            "type": "bearer",
-                            "bearer": [
-                                {
-                                    "key": "token",
-                                    "value": "{{authToken}}",
-                                    "type": "string"
-                                }
-                            ]
-                        },
-                        "method": "PUT",
-                        "header": [],
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"name\": \"Read a book for 30 minutes\"\n}",
-                            "options": {
-                                "raw": {
-                                    "language": "json"
-                                }
-                            }
-                        },
-                        "url": {
-                            "raw": "{{baseUrl}}/habits/your_habit_id",
-                            "host": [
-                                "{{baseUrl}}"
-                            ],
-                            "path": [
-                                "habits",
-                                "your_habit_id"
-                            ]
-                        }
-                    },
-                    "response": []
-                },
-                {
-                    "name": "Delete Habit",
-                    "request": {
-                        "auth": {
-                            "type": "bearer",
-                            "bearer": [
-                                {
-                                    "key": "token",
-                                    "value": "{{authToken}}",
-                                    "type": "string"
-                                }
-                            ]
-                        },
-                        "method": "DELETE",
-                        "header": [],
-                        "url": {
-                            "raw": "{{baseUrl}}/habits/your_habit_id",
-                            "host": [
-                                "{{baseUrl}}"
-                            ],
-                            "path": [
-                                "habits",
-                                "your_habit_id"
-                            ]
-                        }
-                    },
-                    "response": []
-                }
-            ]
-        }
+		{
+			"name": "Habits",
+			"item": [
+				{
+					"name": "Get All Habits",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/habits",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"habits"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Habit",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Read a book\",\n    \"description\": \"Read 10 pages of a book every day\",\n    \"frequency_type\": \"daily\",\n    \"progress_type\": \"yes_no\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/habits",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"habits"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Habit By Id",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/habits/your_habit_id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"habits",
+								"your_habit_id"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Habit",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Read a book for 30 minutes\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/habits/your_habit_id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"habits",
+								"your_habit_id"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Habit",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/habits/your_habit_id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"habits",
+								"your_habit_id"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Habit Completions",
+			"item": [
+				{
+					"name": "Get All Completions for a Habit",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/habits/your_habit_id/completions",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"habits",
+								"your_habit_id",
+								"completions"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create or Update Completion",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"date\": \"2025-10-12\",\n    \"completed\": true,\n    \"progress_type\": \"yes_no\",\n    \"notes\": \"A good day!\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/habits/your_habit_id/completions",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"habits",
+								"your_habit_id",
+								"completions"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Completion Notes",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"notes\": \"An updated note.\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/completions/your_completion_id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"completions",
+								"your_completion_id"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Completion",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/completions/your_completion_id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"completions",
+								"your_completion_id"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Add Image to Completion",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"imageUrl\": \"http://example.com/image.png\",\n    \"thumbnailUrl\": \"http://example.com/thumb.png\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/completions/your_completion_id/images",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"completions",
+								"your_completion_id",
+								"images"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Image",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/images/your_image_id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"images",
+								"your_image_id"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Challenges",
+			"item": [
+				{
+					"name": "Get Available Challenges",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/challenges",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"challenges"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get My Assigned Challenges",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/users/me/challenges",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"me",
+								"challenges"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Assign Challenge to Habit",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"habitId\": \"your_habit_id\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/challenges/your_challenge_id/assign",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"challenges",
+								"your_challenge_id",
+								"assign"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update My Challenge Status",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": \"completed\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/users/me/challenges/your_user_challenge_id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"me",
+								"challenges",
+								"your_user_challenge_id"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Life",
+			"item": [
+				{
+					"name": "Get Available Life Challenges",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/life-challenges",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"life-challenges"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Redeem Life Challenge",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/life-challenges/your_life_challenge_id/redeem",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"life-challenges",
+								"your_life_challenge_id",
+								"redeem"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get My Life History",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/users/me/life-history",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"me",
+								"life-history"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Leagues",
+			"item": [
+				{
+					"name": "Get Current League",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/leagues/current",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"leagues",
+								"current"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Notifications",
+			"item": [
+				{
+					"name": "Get My Notifications",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/users/me/notifications",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"me",
+								"notifications"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Mark Notification as Read",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/notifications/your_notification_id/read",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"notifications",
+								"your_notification_id",
+								"read"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Notification",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{authToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/notifications/your_notification_id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"notifications",
+								"your_notification_id"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
 	]
 }

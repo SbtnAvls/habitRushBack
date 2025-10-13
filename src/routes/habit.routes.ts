@@ -2,10 +2,14 @@ import express, { Router } from 'express';
 import * as habitController from '../controllers/habit.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 
+import habitCompletionRoutes from './habit-completion.routes';
+
 const router: Router = express.Router();
 
 // All habit routes should be protected
 router.use(authMiddleware);
+
+router.use('/:habitId/completions', habitCompletionRoutes);
 
 // Get all habits
 router.get('/', habitController.getAllHabits);
