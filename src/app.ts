@@ -8,7 +8,7 @@ import lifeChallengeRoutes from './routes/life-challenge.routes';
 import leagueRoutes from './routes/league.routes';
 import notificationRoutes from './routes/notification.routes';
 
-import express, { Application, Request, Response } from 'express';
+import express, { Application, NextFunction, Request, Response } from 'express';
 
 const app: Application = express();
 const port: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -18,15 +18,15 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Routes
-app.use('/api/habits', habitRoutes);
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/challenges', challengeRoutes);
-app.use('/api/completions', completionRoutes);
-app.use('/api/images', imageRoutes);
-app.use('/api/life-challenges', lifeChallengeRoutes);
-app.use('/api/leagues', leagueRoutes);
-app.use('/api/notifications', notificationRoutes);
+app.use('/habits', habitRoutes);
+app.use('/auth', authRoutes);
+app.use('/users', userRoutes);
+app.use('/challenges', challengeRoutes);
+app.use('/completions', completionRoutes);
+app.use('/images', imageRoutes);
+app.use('/life-challenges', lifeChallengeRoutes);
+app.use('/leagues', leagueRoutes);
+app.use('/notifications', notificationRoutes);
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Welcome to HabitRush API!');

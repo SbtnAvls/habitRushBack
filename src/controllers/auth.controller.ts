@@ -49,9 +49,11 @@ export const register = async (req: Request, res: Response) => {
 };
 
 export const login = async (req: Request, res: Response) => {
+  console.log(req.body);
   const { email, password } = req.body;
 
   try {
+    console.log(email, password);
     if (!email || !password) {
       return res.status(400).json({ message: 'email and password are required' });
     }
@@ -60,6 +62,7 @@ export const login = async (req: Request, res: Response) => {
     if (!user) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
+    console.log(user);
 
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
