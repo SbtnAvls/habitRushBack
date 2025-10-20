@@ -14,8 +14,10 @@ export interface Habit {
   frequency_days_of_week?: string; // Stored as a comma-separated string
   progress_type: 'yes_no' | 'time' | 'count';
   is_active: boolean;
-  active_by_user: boolean;
+  active_by_user: number;
   last_completed_date?: Date;
+  disabled_at?: Date;
+  disabled_reason?: 'no_lives' | 'manual' | null;
   created_at: Date;
   updated_at: Date;
   deleted_at?: Date;

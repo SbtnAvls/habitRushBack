@@ -38,6 +38,14 @@ export class HabitCompletion {
     return rows as HabitCompletionRecord[];
   }
 
+  static async getById(id: string, userId: string): Promise<HabitCompletionRecord | null> {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      'SELECT * FROM HABIT_COMPLETIONS WHERE id = ? AND user_id = ?',
+      [id, userId]
+    );
+    return rows.length > 0 ? (rows[0] as HabitCompletionRecord) : null;
+  }
+
   static async createOrUpdate(data: HabitCompletionUpsertInput): Promise<HabitCompletionRecord> {
     const {
       habit_id,
@@ -120,7 +128,7 @@ export class HabitCompletion {
     const [result] = await pool.query(
       'UPDATE HABIT_COMPLETIONS SET notes = ? WHERE id = ? AND user_id = ?',
       [data.notes ?? null, id, userId]
-    );
+    )
 
     if ((result as any).affectedRows === 0) {
       return null;

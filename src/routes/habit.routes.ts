@@ -23,6 +23,9 @@ router.post('/', habitController.createHabit);
 // Update a habit
 router.put('/:id', habitController.updateHabit);
 
+// Deactivate a habit manually (clears progress except notes)
+router.post('/:id/deactivate', habitController.deactivateHabit);
+
 // Delete a habit
 router.delete('/:id', habitController.deleteHabit);
 

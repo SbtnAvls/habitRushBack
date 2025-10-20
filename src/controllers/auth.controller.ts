@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { UserModel } from '../models/user.model';
+import { RefreshTokenModel } from '../models/refresh-token.model';
+import { TokenBlacklistModel } from '../models/token-blacklist.model';
 
 export const register = async (req: Request, res: Response) => {
   const { name, email, password } = req.body;
@@ -37,11 +39,31 @@ export const register = async (req: Request, res: Response) => {
       font_size: 'medium',
     });
 
-    const token = jwt.sign({ id: newUser.id }, process.env.JWT_SECRET || 'your_jwt_secret', {
-      expiresIn: '1h',
+    // Generate access token (short-lived)
+    const accessToken = jwt.sign({ id: newUser.id }, process.env.JWT_SECRET || 'your_jwt_secret', {
+      expiresIn: '15m',
     });
 
-    res.status(201).json({ token });
+    // Generate refresh token (long-lived)
+    const refreshToken = jwt.sign(
+      { id: newUser.id, type: 'refresh' },
+      process.env.REFRESH_TOKEN_SECRET || 'your_refresh_secret',
+      { expiresIn: '7d' }
+    );
+
+    // Store refresh token in database
+    const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    await RefreshTokenModel.create({
+      user_id: newUser.id,
+      token: refreshToken,
+      expires_at: refreshTokenExpiry,
+    });
+
+    res.status(201).json({
+      accessToken,
+      refreshToken,
+      expiresIn: 900 // 15 minutes in seconds
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
@@ -69,12 +91,105 @@ export const login = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET || 'your_jwt_secret', {
-      expiresIn: '1h',
+    // Generate access token (short-lived)
+    const accessToken = jwt.sign({ id: user.id }, process.env.JWT_SECRET || 'your_jwt_secret', {
+      expiresIn: '15m',
     });
 
-    res.json({ token });
+    // Generate refresh token (long-lived)
+    const refreshToken = jwt.sign(
+      { id: user.id, type: 'refresh' },
+      process.env.REFRESH_TOKEN_SECRET || 'your_refresh_secret',
+      { expiresIn: '7d' }
+    );
+
+    // Store refresh token in database
+    const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    await RefreshTokenModel.create({
+      user_id: user.id,
+      token: refreshToken,
+      expires_at: refreshTokenExpiry,
+    });
+
+    res.json({
+      accessToken,
+      refreshToken,
+      expiresIn: 900 // 15 minutes in seconds
+    });
   } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+export const refresh = async (req: Request, res: Response) => {
+  const { refreshToken } = req.body;
+
+  try {
+    if (!refreshToken) {
+      return res.status(400).json({ message: 'Refresh token is required' });
+    }
+
+    // Check if refresh token exists in database and is not expired
+    const storedToken = await RefreshTokenModel.findByToken(refreshToken);
+    if (!storedToken) {
+      return res.status(401).json({ message: 'Invalid or expired refresh token' });
+    }
+
+    // Verify refresh token signature and expiration
+    let decoded: any;
+    try {
+      decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET || 'your_refresh_secret');
+    } catch (err) {
+      // If token is invalid or expired, delete it from database
+      await RefreshTokenModel.deleteByToken(refreshToken);
+      return res.status(401).json({ message: 'Invalid or expired refresh token' });
+    }
+
+    // Verify token type
+    if (decoded.type !== 'refresh') {
+      return res.status(401).json({ message: 'Invalid token type' });
+    }
+
+    // Check if token is blacklisted
+    const isBlacklisted = await TokenBlacklistModel.isBlacklisted(refreshToken);
+    if (isBlacklisted) {
+      await RefreshTokenModel.deleteByToken(refreshToken);
+      return res.status(401).json({ message: 'Token has been revoked' });
+    }
+
+    // Generate new access token
+    const newAccessToken = jwt.sign(
+      { id: decoded.id },
+      process.env.JWT_SECRET || 'your_jwt_secret',
+      { expiresIn: '15m' }
+    );
+
+    // Optionally: Rotate refresh token (more secure)
+    // Delete old refresh token
+    await RefreshTokenModel.deleteByToken(refreshToken);
+
+    // Generate new refresh token
+    const newRefreshToken = jwt.sign(
+      { id: decoded.id, type: 'refresh' },
+      process.env.REFRESH_TOKEN_SECRET || 'your_refresh_secret',
+      { expiresIn: '7d' }
+    );
+
+    // Store new refresh token
+    const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await RefreshTokenModel.create({
+      user_id: decoded.id,
+      token: newRefreshToken,
+      expires_at: refreshTokenExpiry,
+    });
+
+    res.json({
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+      expiresIn: 900 // 15 minutes in seconds
+    });
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -101,8 +216,37 @@ export const getCurrentUser = async (req: Request, res: Response) => {
   }
 };
 
-export const logout = (req: Request, res: Response) => {
-  // In a real-world scenario, you might want to manage a token blacklist on the server.
-  // For this example, we'll just send a success message.
-  res.json({ message: 'Successfully logged out' });
+export const logout = async (req: Request, res: Response) => {
+  const { refreshToken } = req.body;
+  const accessToken = req.headers.authorization?.split(' ')[1];
+  const userId = (req as any).user?.id;
+
+  try {
+    if (!userId) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+
+    // Blacklist the access token if provided
+    if (accessToken) {
+      // Decode to get expiration time
+      const decoded = jwt.decode(accessToken) as any;
+      const expiresAt = decoded?.exp ? new Date(decoded.exp * 1000) : new Date(Date.now() + 15 * 60 * 1000);
+
+      await TokenBlacklistModel.create({
+        token: accessToken,
+        user_id: userId,
+        expires_at: expiresAt,
+      });
+    }
+
+    // Delete the refresh token from database if provided
+    if (refreshToken) {
+      await RefreshTokenModel.deleteByToken(refreshToken);
+    }
+
+    res.json({ message: 'Successfully logged out' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
 };

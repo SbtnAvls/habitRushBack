@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import mysql from 'mysql2/promise';
+import mysql, { Pool } from 'mysql2/promise';
 
 const {
   DB_HOST = 'localhost',
@@ -9,7 +9,7 @@ const {
   DB_NAME = 'habitrush_db'
 } = process.env;
 
-const pool = mysql.createPool({
+const pool: Pool = mysql.createPool({
   host: DB_HOST,
   port: Number(DB_PORT),
   user: DB_USER,

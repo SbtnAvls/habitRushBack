@@ -7,6 +7,7 @@ import imageRoutes from './routes/image.routes';
 import lifeChallengeRoutes from './routes/life-challenge.routes';
 import leagueRoutes from './routes/league.routes';
 import notificationRoutes from './routes/notification.routes';
+import { dailyEvaluationService } from './services/daily-evaluation.service';
 
 import express, { Application, NextFunction, Request, Response } from 'express';
 
@@ -34,6 +35,21 @@ app.get('/', (req: Request, res: Response) => {
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
+
+  // Iniciar el servicio de evaluación diaria de hábitos
+  // Se ejecutará todos los días a las 00:05 para evaluar los hábitos del día anterior
+  if (process.env.NODE_ENV !== 'test') {
+    console.log('Starting daily evaluation service...');
+    dailyEvaluationService.startDailyAt0005();
+
+    // Opcional: Ejecutar inmediatamente en desarrollo para pruebas
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Running immediate evaluation for development testing...');
+      dailyEvaluationService.runDailyEvaluation().catch(error => {
+        console.error('Error in immediate daily evaluation:', error);
+      });
+    }
+  }
 });
 
 export default app;

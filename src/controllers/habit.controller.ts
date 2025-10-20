@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import * as habitModel from '../models/habit.model';
+import { deactivateHabitManually } from '../services/habit-evaluation.service';
 
 const ALLOWED_FREQUENCY_TYPES = ['daily', 'weekly', 'custom'];
 const ALLOWED_PROGRESS_TYPES = ['yes_no', 'time', 'count'];
@@ -68,7 +69,7 @@ export const createHabit = async (req: Request, res: Response) => {
       frequency_days_of_week: Array.isArray(frequency_days_of_week) ? frequency_days_of_week.join(',') : undefined,
       progress_type,
       is_active: true,
-      active_by_user: true,
+      active_by_user: 1,
     });
     res.status(201).json(newHabit);
   } catch (error) {
@@ -91,6 +92,19 @@ export const updateHabit = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Habit not found' });
     }
 
+    // Detectar si se está desactivando el hábito manualmente
+    const isDeactivating = habit.active_by_user === 1
+
+    if (isDeactivating) {
+      // Si se está desactivando, usar la función especial que borra el progreso
+      await deactivateHabitManually(id, userId);
+      return res.status(200).json({
+        message: 'Habit deactivated successfully. Progress has been cleared except for notes and images.',
+        success: true
+      });
+    }
+
+    // Para cualquier otra actualización, continuar normalmente
     if (updates.frequency_days_of_week && Array.isArray(updates.frequency_days_of_week)) {
       updates.frequency_days_of_week = updates.frequency_days_of_week.join(',');
     }
@@ -130,5 +144,36 @@ export const deleteHabit = async (req: Request, res: Response) => {
     res.status(204).send();
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Deactivate a habit manually (clears progress except notes)
+export const deactivateHabit = async (req: Request, res: Response) => {
+  console.log('🔍 Deactivating habit:', req.params);
+  const userId = (req as any).user?.id;
+  console.log('🔍 User ID:', userId);
+  if (!userId) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
+  console.log('🔍 Request params:', req.params);
+  const { id } = req.params;
+  console.log('🔍 ID:', id);
+  try {
+    const habit = await habitModel.findHabitById(id, userId);
+    if (!habit) {
+      return res.status(404).json({ message: 'Habit not found' });
+    }
+
+    // Desactivar el hábito y borrar su progreso (excepto notas)
+    console.log('🔍 Deactivating habit:', { id, userId });
+    await deactivateHabitManually(id, userId);
+
+    res.status(200).json({
+      message: 'Habit deactivated successfully. Progress has been cleared except for notes.',
+      success: true
+    });
+  } catch (error) {
+    console.error('Error deactivating habit:', error);
+    res.status(500).json({ message: 'Error deactivating habit', success: false });
   }
 };

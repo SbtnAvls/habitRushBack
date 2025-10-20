@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { HabitCompletion } from '../models/habit-completion.model';
 import { CompletionImage } from '../models/completion-image.model';
+import { evaluateLifeChallenges } from '../services/life-challenge-evaluation.service';
+import { calculateAndUpdateStreak } from '../services/streak-calculation.service';
 
 export class HabitCompletionController {
   static async getCompletionsForHabit(req: Request, res: Response) {
@@ -30,6 +32,32 @@ export class HabitCompletionController {
         habit_id: habitId,
         user_id: userId,
       });
+
+      // Calcular y actualizar el streak actual del hábito
+      try {
+        const currentStreak = await calculateAndUpdateStreak(habitId, userId);
+        (completion as any).current_streak = currentStreak;
+      } catch (streakError) {
+        console.error('Error calculating streak:', streakError);
+        // No fallar la operación principal si falla el cálculo del streak
+      }
+
+      // Evaluar Life Challenges automáticamente después de completar un hábito
+      if (completed === 1) {
+        try {
+          const lifeChallengeStatuses = await evaluateLifeChallenges(userId);
+
+          // Agregar información sobre challenges obtenidos a la respuesta
+          const newlyObtained = lifeChallengeStatuses.filter(lc => lc.status === 'obtained' && lc.can_redeem);
+          if (newlyObtained.length > 0) {
+            (completion as any).new_life_challenges_obtained = newlyObtained;
+          }
+        } catch (evalError) {
+          console.error('Error evaluating life challenges:', evalError);
+          // No fallar la operación principal si falla la evaluación de challenges
+        }
+      }
+
       res.status(201).json(completion);
     } catch (error) {
       console.error(error);
@@ -61,10 +89,27 @@ export class HabitCompletionController {
     try {
       const { id } = req.params;
       const userId = (req as any).user.id;
+
+      // Obtener la completion antes de eliminarla para saber el habit_id
+      const completion = await HabitCompletion.getById(id, userId);
+      if (!completion) {
+        return res.status(404).json({ message: 'Habit completion not found' });
+      }
+
+      const habitId = completion.habit_id;
+
       const success = await HabitCompletion.delete(id, userId);
       if (!success) {
         return res.status(404).json({ message: 'Habit completion not found' });
       }
+
+      // Recalcular el streak después de eliminar la completion
+      try {
+        await calculateAndUpdateStreak(habitId, userId);
+      } catch (streakError) {
+        console.error('Error recalculating streak after deletion:', streakError);
+      }
+
       res.status(204).send();
     } catch (error) {
       console.error(error);
