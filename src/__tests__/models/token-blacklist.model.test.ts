@@ -1,4 +1,4 @@
-import { TokenBlacklistModel, TokenBlacklist } from '../../models/token-blacklist.model';
+import { TokenBlacklistModel } from '../../models/token-blacklist.model';
 import pool from '../../db';
 
 // Mock the database pool
@@ -37,7 +37,7 @@ describe('TokenBlacklistModel', () => {
         expect.objectContaining({
           token: tokenData.token,
           user_id: tokenData.user_id,
-        })
+        }),
       );
     });
 
@@ -89,7 +89,7 @@ describe('TokenBlacklistModel', () => {
       expect(result).toBe(true);
       expect(mockPool.query).toHaveBeenCalledWith(
         'SELECT COUNT(*) as count FROM TOKEN_BLACKLIST WHERE token = ? AND expires_at > NOW()',
-        [token]
+        [token],
       );
     });
 
@@ -110,10 +110,7 @@ describe('TokenBlacklistModel', () => {
 
       await TokenBlacklistModel.isBlacklisted(token);
 
-      expect(mockPool.query).toHaveBeenCalledWith(
-        expect.stringContaining('expires_at > NOW()'),
-        [token]
-      );
+      expect(mockPool.query).toHaveBeenCalledWith(expect.stringContaining('expires_at > NOW()'), [token]);
     });
 
     it('should return false for expired blacklist entries', async () => {
@@ -145,9 +142,7 @@ describe('TokenBlacklistModel', () => {
 
       await TokenBlacklistModel.deleteExpired();
 
-      expect(mockPool.query).toHaveBeenCalledWith(
-        'DELETE FROM TOKEN_BLACKLIST WHERE expires_at <= NOW()'
-      );
+      expect(mockPool.query).toHaveBeenCalledWith('DELETE FROM TOKEN_BLACKLIST WHERE expires_at <= NOW()');
     });
 
     it('should not throw error if no expired entries exist', async () => {
@@ -161,9 +156,7 @@ describe('TokenBlacklistModel', () => {
 
       await TokenBlacklistModel.deleteExpired();
 
-      expect(mockPool.query).toHaveBeenCalledWith(
-        expect.stringContaining('expires_at <= NOW()')
-      );
+      expect(mockPool.query).toHaveBeenCalledWith(expect.stringContaining('expires_at <= NOW()'));
     });
   });
 
@@ -175,18 +168,13 @@ describe('TokenBlacklistModel', () => {
 
       await TokenBlacklistModel.deleteByUserId(userId);
 
-      expect(mockPool.query).toHaveBeenCalledWith(
-        'DELETE FROM TOKEN_BLACKLIST WHERE user_id = ?',
-        [userId]
-      );
+      expect(mockPool.query).toHaveBeenCalledWith('DELETE FROM TOKEN_BLACKLIST WHERE user_id = ?', [userId]);
     });
 
     it('should not throw error if user has no blacklisted tokens', async () => {
       mockPool.query.mockResolvedValue([{ affectedRows: 0 }] as any);
 
-      await expect(
-        TokenBlacklistModel.deleteByUserId('user-with-no-blacklist')
-      ).resolves.not.toThrow();
+      await expect(TokenBlacklistModel.deleteByUserId('user-with-no-blacklist')).resolves.not.toThrow();
     });
 
     it('should delete both expired and non-expired entries for user', async () => {
@@ -197,10 +185,7 @@ describe('TokenBlacklistModel', () => {
       await TokenBlacklistModel.deleteByUserId(userId);
 
       // Should not filter by expires_at when deleting by user
-      expect(mockPool.query).toHaveBeenCalledWith(
-        'DELETE FROM TOKEN_BLACKLIST WHERE user_id = ?',
-        [userId]
-      );
+      expect(mockPool.query).toHaveBeenCalledWith('DELETE FROM TOKEN_BLACKLIST WHERE user_id = ?', [userId]);
     });
   });
 
@@ -231,9 +216,7 @@ describe('TokenBlacklistModel', () => {
 
       await TokenBlacklistModel.deleteExpired();
 
-      expect(mockPool.query).toHaveBeenCalledWith(
-        'DELETE FROM TOKEN_BLACKLIST WHERE expires_at <= NOW()'
-      );
+      expect(mockPool.query).toHaveBeenCalledWith('DELETE FROM TOKEN_BLACKLIST WHERE expires_at <= NOW()');
     });
 
     it('should handle user deletion cleanup', async () => {
@@ -244,10 +227,7 @@ describe('TokenBlacklistModel', () => {
 
       await TokenBlacklistModel.deleteByUserId(userId);
 
-      expect(mockPool.query).toHaveBeenCalledWith(
-        'DELETE FROM TOKEN_BLACKLIST WHERE user_id = ?',
-        [userId]
-      );
+      expect(mockPool.query).toHaveBeenCalledWith('DELETE FROM TOKEN_BLACKLIST WHERE user_id = ?', [userId]);
     });
   });
 });

@@ -17,11 +17,10 @@ export interface LifeHistory extends RowDataPacket {
 }
 
 export class LifeHistoryModel {
-
   static async getForUser(userId: string): Promise<LifeHistory[]> {
     const [rows] = await pool.query<RowDataPacket[]>(
       'SELECT * FROM LIFE_HISTORY WHERE user_id = ? ORDER BY created_at DESC',
-      [userId]
+      [userId],
     );
     return rows as LifeHistory[];
   }
@@ -31,7 +30,7 @@ export class LifeHistoryModel {
     livesChange: number,
     currentLives: number,
     reason: LifeHistoryReason,
-    relatedId?: { habitId?: string; userChallengeId?: string; lifeChallengeId?: string }
+    relatedId?: { habitId?: string; userChallengeId?: string; lifeChallengeId?: string },
   ): Promise<LifeHistory> {
     const id = uuidv4();
     await pool.query(
@@ -47,10 +46,9 @@ export class LifeHistoryModel {
         relatedId?.habitId ?? null,
         relatedId?.userChallengeId ?? null,
         relatedId?.lifeChallengeId ?? null,
-      ]
+      ],
     );
     const [rows] = await pool.query<RowDataPacket[]>('SELECT * FROM LIFE_HISTORY WHERE id = ?', [id]);
     return rows[0] as LifeHistory;
   }
-
 }

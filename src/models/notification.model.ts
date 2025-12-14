@@ -1,3 +1,4 @@
+import { RowDataPacket, ResultSetHeader } from 'mysql2';
 import pool from '../db';
 
 export interface Notification {
@@ -13,17 +14,19 @@ export interface Notification {
   created_at: Date;
 }
 
+interface NotificationRow extends RowDataPacket, Notification {}
+
 export class NotificationModel {
   static async findByUserId(userId: string): Promise<Notification[]> {
-    const [rows] = await pool.query<any[]>(
+    const [rows] = await pool.query<NotificationRow[]>(
       'SELECT * FROM NOTIFICATIONS WHERE user_id = ? ORDER BY created_at DESC',
-      [userId]
+      [userId],
     );
     return rows;
   }
 
   static async findById(id: string): Promise<Notification | null> {
-    const [rows] = await pool.query<any[]>('SELECT * FROM NOTIFICATIONS WHERE id = ?', [id]);
+    const [rows] = await pool.query<NotificationRow[]>('SELECT * FROM NOTIFICATIONS WHERE id = ?', [id]);
     if (rows.length === 0) {
       return null;
     }
@@ -31,15 +34,15 @@ export class NotificationModel {
   }
 
   static async updateReadStatus(id: string, is_read: boolean): Promise<boolean> {
-    const [result] = await pool.query<any>(
-      'UPDATE NOTIFICATIONS SET is_read = ? WHERE id = ?',
-      [is_read, id]
-    );
+    const [result] = await pool.query<ResultSetHeader>('UPDATE NOTIFICATIONS SET is_read = ? WHERE id = ?', [
+      is_read,
+      id,
+    ]);
     return result.affectedRows > 0;
   }
 
   static async deleteById(id: string): Promise<boolean> {
-    const [result] = await pool.query<any>('DELETE FROM NOTIFICATIONS WHERE id = ?', [id]);
+    const [result] = await pool.query<ResultSetHeader>('DELETE FROM NOTIFICATIONS WHERE id = ?', [id]);
     return result.affectedRows > 0;
   }
 }

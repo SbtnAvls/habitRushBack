@@ -24,7 +24,7 @@ export class RefreshTokenModel {
   static async findByToken(token: string): Promise<RefreshToken | undefined> {
     const [rows] = await pool.query<RowDataPacket[]>(
       'SELECT * FROM REFRESH_TOKENS WHERE token = ? AND expires_at > NOW()',
-      [token]
+      [token],
     );
     return rows[0] as RefreshToken | undefined;
   }
@@ -32,7 +32,7 @@ export class RefreshTokenModel {
   static async findByUserId(userId: string): Promise<RefreshToken[]> {
     const [rows] = await pool.query<RowDataPacket[]>(
       'SELECT * FROM REFRESH_TOKENS WHERE user_id = ? AND expires_at > NOW()',
-      [userId]
+      [userId],
     );
     return rows as RefreshToken[];
   }

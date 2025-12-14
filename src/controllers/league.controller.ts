@@ -1,17 +1,20 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { RowDataPacket } from 'mysql2';
 import db from '../db';
+import { AuthRequest } from '../middleware/auth.middleware';
 
 // @desc    Get current league classification
 // @route   GET /api/leagues/current
 // @access  Private
-const getCurrentLeague = async (req: Request, res: Response) => {
+const getCurrentLeague = async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ message: 'Not authenticated' });
+      return;
+    }
 
-    const [weekRows] = await db.query<RowDataPacket[]>(
-      'SELECT id FROM LEAGUE_WEEKS ORDER BY week_start DESC LIMIT 1'
-    );
+    const [weekRows] = await db.query<RowDataPacket[]>('SELECT id FROM LEAGUE_WEEKS ORDER BY week_start DESC LIMIT 1');
 
     if (weekRows.length === 0) {
       res.status(404).json({ message: 'No active league week found.' });
@@ -21,7 +24,7 @@ const getCurrentLeague = async (req: Request, res: Response) => {
 
     const [competitorRows] = await db.query<RowDataPacket[]>(
       'SELECT league_id FROM LEAGUE_COMPETITORS WHERE user_id = ? AND league_week_id = ?',
-      [userId, currentWeekId]
+      [userId, currentWeekId],
     );
 
     if (competitorRows.length === 0) {
@@ -32,7 +35,7 @@ const getCurrentLeague = async (req: Request, res: Response) => {
 
     const [leagueInfoRows] = await db.query<RowDataPacket[]>(
       'SELECT id, name, color_hex as colorHex FROM LEAGUES WHERE id = ?',
-      [userLeagueId]
+      [userLeagueId],
     );
 
     if (leagueInfoRows.length === 0) {
@@ -50,15 +53,14 @@ const getCurrentLeague = async (req: Request, res: Response) => {
        FROM LEAGUE_COMPETITORS 
        WHERE league_id = ? AND league_week_id = ? 
        ORDER BY position ASC`,
-      [userLeagueId, currentWeekId]
+      [userLeagueId, currentWeekId],
     );
 
     res.status(200).json({
       league: leagueInfoRows[0],
       competitors: competitorsRows,
     });
-  } catch (error) {
-    console.error(error);
+  } catch (_error) {
     res.status(500).json({ message: 'Error fetching current league information.' });
   }
 };
@@ -66,9 +68,13 @@ const getCurrentLeague = async (req: Request, res: Response) => {
 // @desc    Get user's league history
 // @route   GET /api/users/me/league-history
 // @access  Private
-const getLeagueHistory = async (req: Request, res: Response) => {
+const getLeagueHistory = async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ message: 'Not authenticated' });
+      return;
+    }
 
     const [historyRows] = await db.query<RowDataPacket[]>(
       `SELECT 
@@ -83,12 +89,11 @@ const getLeagueHistory = async (req: Request, res: Response) => {
        JOIN LEAGUE_WEEKS lw ON ulh.league_week_id = lw.id
        WHERE ulh.user_id = ?
        ORDER BY lw.week_start DESC`,
-      [userId]
+      [userId],
     );
 
     res.status(200).json(historyRows);
-  } catch (error) {
-    console.error(error);
+  } catch (_error) {
     res.status(500).json({ message: 'Error fetching league history.' });
   }
 };

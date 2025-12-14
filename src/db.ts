@@ -6,7 +6,7 @@ const {
   DB_PORT = '3307',
   DB_USER = 'user',
   DB_PASSWORD = 'password',
-  DB_NAME = 'habitrush_db'
+  DB_NAME = 'habitrush_db',
 } = process.env;
 
 const pool: Pool = mysql.createPool({

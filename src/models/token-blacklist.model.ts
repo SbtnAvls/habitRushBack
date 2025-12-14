@@ -24,9 +24,9 @@ export class TokenBlacklistModel {
   static async isBlacklisted(token: string): Promise<boolean> {
     const [rows] = await pool.query<RowDataPacket[]>(
       'SELECT COUNT(*) as count FROM TOKEN_BLACKLIST WHERE token = ? AND expires_at > NOW()',
-      [token]
+      [token],
     );
-    return (rows[0] as any).count > 0;
+    return (rows[0].count as number) > 0;
   }
 
   static async deleteExpired(): Promise<void> {

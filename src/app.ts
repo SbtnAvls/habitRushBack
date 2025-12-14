@@ -1,6 +1,6 @@
-import habitRoutes from './routes/habit.routes'
-import authRoutes from './routes/auth.routes'
-import userRoutes from './routes/user.routes'
+import habitRoutes from './routes/habit.routes';
+import authRoutes from './routes/auth.routes';
+import userRoutes from './routes/user.routes';
 import challengeRoutes from './routes/challenge.routes';
 import completionRoutes from './routes/completion.routes';
 import imageRoutes from './routes/image.routes';
@@ -8,15 +8,18 @@ import lifeChallengeRoutes from './routes/life-challenge.routes';
 import leagueRoutes from './routes/league.routes';
 import notificationRoutes from './routes/notification.routes';
 import { dailyEvaluationService } from './services/daily-evaluation.service';
+import { setupSwagger } from './swagger';
 
-import express, { Application, NextFunction, Request, Response } from 'express';
+import express, { Application, Request, Response } from 'express';
 
 const app: Application = express();
 const port: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // Middlewares
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+
+// Swagger Documentation
+setupSwagger(app);
 
 // Routes
 app.use('/habits', habitRoutes);
@@ -34,17 +37,17 @@ app.get('/', (req: Request, res: Response) => {
 });
 
 app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+  console.warn(`Server is running on port ${port}`);
 
   // Iniciar el servicio de evaluación diaria de hábitos
   // Se ejecutará todos los días a las 00:05 para evaluar los hábitos del día anterior
   if (process.env.NODE_ENV !== 'test') {
-    console.log('Starting daily evaluation service...');
+    console.warn('Starting daily evaluation service...');
     dailyEvaluationService.startDailyAt0005();
 
     // Opcional: Ejecutar inmediatamente en desarrollo para pruebas
     if (process.env.NODE_ENV === 'development') {
-      console.log('Running immediate evaluation for development testing...');
+      console.warn('Running immediate evaluation for development testing...');
       dailyEvaluationService.runDailyEvaluation().catch(error => {
         console.error('Error in immediate daily evaluation:', error);
       });

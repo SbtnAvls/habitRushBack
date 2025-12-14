@@ -1,17 +1,18 @@
-import { Request, Response } from 'express';
-import pool from '../db';
-import { LifeChallenge, LifeChallengeModel } from '../models/life-challenge.model';
-import { User } from '../models/user.model';
-import { RowDataPacket } from 'mysql2';
+import { Response } from 'express';
+import { LifeChallengeModel } from '../models/life-challenge.model';
 import {
   getUserLifeChallengeStatuses,
-  redeemLifeChallengeWithValidation
+  redeemLifeChallengeWithValidation,
 } from '../services/life-challenge-evaluation.service';
+import { AuthRequest } from '../middleware/auth.middleware';
 
 // GET /api/life-challenges
-export const getLifeChallenges = async (req: Request, res: Response) => {
+export const getLifeChallenges = async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
     const withStatus = req.query.withStatus === 'true';
 
     if (withStatus) {
@@ -30,9 +31,12 @@ export const getLifeChallenges = async (req: Request, res: Response) => {
 };
 
 // POST /api/life-challenges/:id/redeem
-export const redeemLifeChallenge = async (req: Request, res: Response) => {
+export const redeemLifeChallenge = async (req: AuthRequest, res: Response) => {
   const { id: lifeChallengeId } = req.params;
-  const userId = (req as any).user.id;
+  const userId = req.user?.id;
+  if (!userId) {
+    return res.status(401).json({ message: 'Not authenticated', success: false });
+  }
 
   try {
     // Usar el nuevo servicio con validación
@@ -42,27 +46,30 @@ export const redeemLifeChallenge = async (req: Request, res: Response) => {
       res.status(200).json({
         message: result.message,
         livesGained: result.livesGained,
-        success: true
+        success: true,
       });
     } else {
       res.status(400).json({
         message: result.message,
-        success: false
+        success: false,
       });
     }
   } catch (error) {
     console.error('Error redeeming life challenge:', error);
     res.status(500).json({
       message: 'Error redeeming life challenge',
-      success: false
+      success: false,
     });
   }
 };
 
 // GET /api/life-challenges/status
-export const getLifeChallengeStatus = async (req: Request, res: Response) => {
+export const getLifeChallengeStatus = async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
     const statuses = await getUserLifeChallengeStatuses(userId);
     res.json(statuses);
   } catch (error) {

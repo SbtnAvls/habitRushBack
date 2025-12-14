@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { UserModel } from '../models/user.model';
 import { RefreshTokenModel } from '../models/refresh-token.model';
 import { TokenBlacklistModel } from '../models/token-blacklist.model';
+import { AuthRequest } from '../middleware/auth.middleware';
 
 export const register = async (req: Request, res: Response) => {
   const { name, email, password } = req.body;
@@ -48,7 +49,7 @@ export const register = async (req: Request, res: Response) => {
     const refreshToken = jwt.sign(
       { id: newUser.id, type: 'refresh' },
       process.env.REFRESH_TOKEN_SECRET || 'your_refresh_secret',
-      { expiresIn: '7d' }
+      { expiresIn: '7d' },
     );
 
     // Store refresh token in database
@@ -62,7 +63,7 @@ export const register = async (req: Request, res: Response) => {
     res.status(201).json({
       accessToken,
       refreshToken,
-      expiresIn: 900 // 15 minutes in seconds
+      expiresIn: 900, // 15 minutes in seconds
     });
   } catch (error) {
     console.error(error);
@@ -71,11 +72,9 @@ export const register = async (req: Request, res: Response) => {
 };
 
 export const login = async (req: Request, res: Response) => {
-  console.log(req.body);
   const { email, password } = req.body;
 
   try {
-    console.log(email, password);
     if (!email || !password) {
       return res.status(400).json({ message: 'email and password are required' });
     }
@@ -84,7 +83,6 @@ export const login = async (req: Request, res: Response) => {
     if (!user) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
-    console.log(user);
 
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
@@ -100,7 +98,7 @@ export const login = async (req: Request, res: Response) => {
     const refreshToken = jwt.sign(
       { id: user.id, type: 'refresh' },
       process.env.REFRESH_TOKEN_SECRET || 'your_refresh_secret',
-      { expiresIn: '7d' }
+      { expiresIn: '7d' },
     );
 
     // Store refresh token in database
@@ -114,9 +112,9 @@ export const login = async (req: Request, res: Response) => {
     res.json({
       accessToken,
       refreshToken,
-      expiresIn: 900 // 15 minutes in seconds
+      expiresIn: 900, // 15 minutes in seconds
     });
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -136,10 +134,13 @@ export const refresh = async (req: Request, res: Response) => {
     }
 
     // Verify refresh token signature and expiration
-    let decoded: any;
+    let decoded: { id: string; type: string };
     try {
-      decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET || 'your_refresh_secret');
-    } catch (err) {
+      decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET || 'your_refresh_secret') as {
+        id: string;
+        type: string;
+      };
+    } catch (_err) {
       // If token is invalid or expired, delete it from database
       await RefreshTokenModel.deleteByToken(refreshToken);
       return res.status(401).json({ message: 'Invalid or expired refresh token' });
@@ -158,11 +159,9 @@ export const refresh = async (req: Request, res: Response) => {
     }
 
     // Generate new access token
-    const newAccessToken = jwt.sign(
-      { id: decoded.id },
-      process.env.JWT_SECRET || 'your_jwt_secret',
-      { expiresIn: '15m' }
-    );
+    const newAccessToken = jwt.sign({ id: decoded.id }, process.env.JWT_SECRET || 'your_jwt_secret', {
+      expiresIn: '15m',
+    });
 
     // Optionally: Rotate refresh token (more secure)
     // Delete old refresh token
@@ -172,7 +171,7 @@ export const refresh = async (req: Request, res: Response) => {
     const newRefreshToken = jwt.sign(
       { id: decoded.id, type: 'refresh' },
       process.env.REFRESH_TOKEN_SECRET || 'your_refresh_secret',
-      { expiresIn: '7d' }
+      { expiresIn: '7d' },
     );
 
     // Store new refresh token
@@ -186,7 +185,7 @@ export const refresh = async (req: Request, res: Response) => {
     res.json({
       accessToken: newAccessToken,
       refreshToken: newRefreshToken,
-      expiresIn: 900 // 15 minutes in seconds
+      expiresIn: 900, // 15 minutes in seconds
     });
   } catch (error) {
     console.error(error);
@@ -194,8 +193,8 @@ export const refresh = async (req: Request, res: Response) => {
   }
 };
 
-export const getCurrentUser = async (req: Request, res: Response) => {
-  const userId = (req as any).user?.id;
+export const getCurrentUser = async (req: AuthRequest, res: Response) => {
+  const userId = req.user?.id;
 
   if (!userId) {
     return res.status(401).json({ message: 'Not authenticated' });
@@ -210,16 +209,15 @@ export const getCurrentUser = async (req: Request, res: Response) => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password_hash, ...userWithoutPassword } = user;
     res.json(userWithoutPassword);
-  } catch (error) {
-    console.error(error);
+  } catch (_error) {
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-export const logout = async (req: Request, res: Response) => {
+export const logout = async (req: AuthRequest, res: Response) => {
   const { refreshToken } = req.body;
   const accessToken = req.headers.authorization?.split(' ')[1];
-  const userId = (req as any).user?.id;
+  const userId = req.user?.id;
 
   try {
     if (!userId) {
@@ -229,7 +227,7 @@ export const logout = async (req: Request, res: Response) => {
     // Blacklist the access token if provided
     if (accessToken) {
       // Decode to get expiration time
-      const decoded = jwt.decode(accessToken) as any;
+      const decoded = jwt.decode(accessToken) as { exp?: number } | null;
       const expiresAt = decoded?.exp ? new Date(decoded.exp * 1000) : new Date(Date.now() + 15 * 60 * 1000);
 
       await TokenBlacklistModel.create({
@@ -245,8 +243,7 @@ export const logout = async (req: Request, res: Response) => {
     }
 
     res.json({ message: 'Successfully logged out' });
-  } catch (error) {
-    console.error(error);
+  } catch (_error) {
     res.status(500).json({ message: 'Server error' });
   }
 };

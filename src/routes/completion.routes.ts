@@ -15,6 +15,4 @@ router.delete('/:id', HabitCompletionController.deleteCompletion);
 // Corresponds to POST /api/completions/:id/images
 router.post('/:id/images', HabitCompletionController.addImageToCompletion);
 
-
-
 export default router;

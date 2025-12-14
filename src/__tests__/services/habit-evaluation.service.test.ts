@@ -3,16 +3,16 @@ import {
   evaluateMissedHabits,
   evaluateAllUsersDailyHabits,
   reviveUser,
-  deactivateHabitManually
+  deactivateHabitManually,
 } from '../../services/habit-evaluation.service';
-import { subDays } from 'date-fns';
+// date-fns is available if needed for future tests
 
 // Mock del pool de base de datos
 jest.mock('../../db', () => ({
   __esModule: true,
   default: {
-    getConnection: jest.fn()
-  }
+    getConnection: jest.fn(),
+  },
 }));
 
 describe('Habit Evaluation Service', () => {
@@ -25,7 +25,7 @@ describe('Habit Evaluation Service', () => {
       beginTransaction: jest.fn(),
       commit: jest.fn(),
       rollback: jest.fn(),
-      release: jest.fn()
+      release: jest.fn(),
     };
 
     (pool.getConnection as jest.Mock).mockResolvedValue(mockConnection);
@@ -39,9 +39,7 @@ describe('Habit Evaluation Service', () => {
     it('should evaluate missed habits and reduce lives correctly', async () => {
       // Mock: Hábitos activos programados para hoy
       mockConnection.execute
-        .mockResolvedValueOnce([[
-          { id: Buffer.from('habit-1'), frequency_type: 'daily', frequency_days: null }
-        ]])
+        .mockResolvedValueOnce([[{ id: Buffer.from('habit-1'), frequency_type: 'daily', frequency_days: null }]])
         // Mock: No hay completamiento para el hábito
         .mockResolvedValueOnce([[]])
         // Mock: Usuario actual con 2 vidas
@@ -65,10 +63,12 @@ describe('Habit Evaluation Service', () => {
     it('should disable all habits when user reaches 0 lives', async () => {
       // Mock: 2 hábitos activos
       mockConnection.execute
-        .mockResolvedValueOnce([[
-          { id: Buffer.from('habit-1'), frequency_type: 'daily', frequency_days: null },
-          { id: Buffer.from('habit-2'), frequency_type: 'daily', frequency_days: null }
-        ]])
+        .mockResolvedValueOnce([
+          [
+            { id: Buffer.from('habit-1'), frequency_type: 'daily', frequency_days: null },
+            { id: Buffer.from('habit-2'), frequency_type: 'daily', frequency_days: null },
+          ],
+        ])
         // Mock: No completamientos para habit-1
         .mockResolvedValueOnce([[]])
         // Mock: No completamientos para habit-2
@@ -82,11 +82,9 @@ describe('Habit Evaluation Service', () => {
         // Mock: INSERT life history habit-2
         .mockResolvedValueOnce([])
         // Mock: SELECT todos los hábitos activos para deshabilitar
-        .mockResolvedValueOnce([[
-          { id: Buffer.from('habit-1') },
-          { id: Buffer.from('habit-2') },
-          { id: Buffer.from('habit-3') }
-        ]])
+        .mockResolvedValueOnce([
+          [{ id: Buffer.from('habit-1') }, { id: Buffer.from('habit-2') }, { id: Buffer.from('habit-3') }],
+        ])
         // Mock: UPDATE deshabilitar hábitos
         .mockResolvedValueOnce([]);
 
@@ -101,9 +99,7 @@ describe('Habit Evaluation Service', () => {
     it('should not reduce lives if all habits were completed', async () => {
       // Mock: 1 hábito programado
       mockConnection.execute
-        .mockResolvedValueOnce([[
-          { id: Buffer.from('habit-1'), frequency_type: 'daily', frequency_days: null }
-        ]])
+        .mockResolvedValueOnce([[{ id: Buffer.from('habit-1'), frequency_type: 'daily', frequency_days: null }]])
         // Mock: Hábito completado
         .mockResolvedValueOnce([[{ completed: 1 }]]);
 
@@ -120,18 +116,20 @@ describe('Habit Evaluation Service', () => {
 
       // Mock: Hábito semanal programado para viernes (day 5)
       mockConnection.execute
-        .mockResolvedValueOnce([[
-          {
-            id: Buffer.from('habit-1'),
-            frequency_type: 'weekly',
-            frequency_days: JSON.stringify([1, 3, 5]) // Lunes, Miércoles, Viernes
-          },
-          {
-            id: Buffer.from('habit-2'),
-            frequency_type: 'weekly',
-            frequency_days: JSON.stringify([0, 6]) // Domingo, Sábado (NO viernes)
-          }
-        ]])
+        .mockResolvedValueOnce([
+          [
+            {
+              id: Buffer.from('habit-1'),
+              frequency_type: 'weekly',
+              frequency_days: JSON.stringify([1, 3, 5]), // Lunes, Miércoles, Viernes
+            },
+            {
+              id: Buffer.from('habit-2'),
+              frequency_type: 'weekly',
+              frequency_days: JSON.stringify([0, 6]), // Domingo, Sábado (NO viernes)
+            },
+          ],
+        ])
         // Mock: No completado habit-1
         .mockResolvedValueOnce([[]])
         // Mock: Usuario con 2 vidas
@@ -149,8 +147,7 @@ describe('Habit Evaluation Service', () => {
     it('should rollback on error', async () => {
       mockConnection.execute.mockRejectedValueOnce(new Error('Database error'));
 
-      await expect(evaluateMissedHabits(userId, evaluationDate))
-        .rejects.toThrow('Database error');
+      await expect(evaluateMissedHabits(userId, evaluationDate)).rejects.toThrow('Database error');
 
       expect(mockConnection.rollback).toHaveBeenCalled();
       expect(mockConnection.commit).not.toHaveBeenCalled();
@@ -159,45 +156,40 @@ describe('Habit Evaluation Service', () => {
 
   describe('evaluateAllUsersDailyHabits', () => {
     it('should evaluate all active users', async () => {
-      const users = [
-        { id: Buffer.from('user-1') },
-        { id: Buffer.from('user-2') },
-        { id: Buffer.from('user-3') }
-      ];
+      const users = [{ id: Buffer.from('user-1') }, { id: Buffer.from('user-2') }, { id: Buffer.from('user-3') }];
 
       // Mock: Obtener todos los usuarios
       mockConnection.execute.mockResolvedValueOnce([users]);
 
-      // Mock las evaluaciones individuales
-      const mockEvaluateMissedHabits = jest.fn()
+      // Mock las evaluaciones individuales (variable reserved for potential future use)
+      const _mockEvaluateMissedHabits = jest
+        .fn()
         .mockResolvedValueOnce({
           user_id: 'user-1',
           missed_habits: [],
           lives_lost: 0,
           new_lives_total: 2,
-          habits_disabled: []
+          habits_disabled: [],
         })
         .mockResolvedValueOnce({
           user_id: 'user-2',
           missed_habits: ['habit-1'],
           lives_lost: 1,
           new_lives_total: 1,
-          habits_disabled: []
+          habits_disabled: [],
         })
         .mockResolvedValueOnce({
           user_id: 'user-3',
           missed_habits: ['habit-1', 'habit-2'],
           lives_lost: 2,
           new_lives_total: 0,
-          habits_disabled: ['habit-1', 'habit-2']
+          habits_disabled: ['habit-1', 'habit-2'],
         });
 
       // Mockear múltiples evaluaciones
       for (let i = 0; i < users.length; i++) {
         mockConnection.execute
-          .mockResolvedValueOnce([[
-            { id: Buffer.from('habit-1'), frequency_type: 'daily' }
-          ]])
+          .mockResolvedValueOnce([[{ id: Buffer.from('habit-1'), frequency_type: 'daily' }]])
           .mockResolvedValueOnce([[]])
           .mockResolvedValueOnce([[{ lives: 2 - i, max_lives: 2 }]])
           .mockResolvedValueOnce([])
@@ -205,9 +197,7 @@ describe('Habit Evaluation Service', () => {
 
         if (i === 2) {
           // Usuario 3 llega a 0 vidas
-          mockConnection.execute
-            .mockResolvedValueOnce([[{ id: Buffer.from('habit-1') }]])
-            .mockResolvedValueOnce([]);
+          mockConnection.execute.mockResolvedValueOnce([[{ id: Buffer.from('habit-1') }]]).mockResolvedValueOnce([]);
         }
       }
 
@@ -218,25 +208,18 @@ describe('Habit Evaluation Service', () => {
     });
 
     it('should continue evaluation even if one user fails', async () => {
-      mockConnection.execute
-        .mockResolvedValueOnce([[
-          { id: Buffer.from('user-1') },
-          { id: Buffer.from('user-2') }
-        ]]);
+      mockConnection.execute.mockResolvedValueOnce([[{ id: Buffer.from('user-1') }, { id: Buffer.from('user-2') }]]);
 
       // Mockear evaluación de user-1 con datos completos
       mockConnection.execute
-        .mockResolvedValueOnce([[
-          { id: Buffer.from('habit-1'), frequency_type: 'daily' }
-        ]])
+        .mockResolvedValueOnce([[{ id: Buffer.from('habit-1'), frequency_type: 'daily' }]])
         .mockResolvedValueOnce([[]])
         .mockResolvedValueOnce([[{ lives: 2, max_lives: 2 }]])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]);
 
       // Mockear evaluación de user-2 con error
-      mockConnection.execute
-        .mockRejectedValueOnce(new Error('User evaluation failed'));
+      mockConnection.execute.mockRejectedValueOnce(new Error('User evaluation failed'));
 
       const results = await evaluateAllUsersDailyHabits();
 
@@ -263,13 +246,13 @@ describe('Habit Evaluation Service', () => {
 
       expect(mockConnection.beginTransaction).toHaveBeenCalled();
       expect(mockConnection.commit).toHaveBeenCalled();
-      expect(mockConnection.execute).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE USERS SET lives = ?'),
-        [2, userId]
-      );
+      expect(mockConnection.execute).toHaveBeenCalledWith(expect.stringContaining('UPDATE USERS SET lives = ?'), [
+        2,
+        userId,
+      ]);
       expect(mockConnection.execute).toHaveBeenCalledWith(
         expect.stringContaining('UPDATE HABITS'),
-        expect.arrayContaining([userId])
+        expect.arrayContaining([userId]),
       );
     });
 
@@ -285,7 +268,7 @@ describe('Habit Evaluation Service', () => {
       // Verificar que el UPDATE de hábitos incluye el filtro de disabled_reason
       expect(mockConnection.execute).toHaveBeenCalledWith(
         expect.stringContaining("disabled_reason = 'no_lives'"),
-        expect.arrayContaining([userId])
+        expect.arrayContaining([userId]),
       );
     });
 
@@ -300,7 +283,7 @@ describe('Habit Evaluation Service', () => {
 
       expect(mockConnection.execute).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO LIFE_HISTORY'),
-        expect.arrayContaining([expect.any(String), userId, 2, 2, 'user_revived'])
+        expect.arrayContaining([expect.any(String), userId, 2, 2, 'user_revived']),
       );
     });
 
@@ -343,25 +326,25 @@ describe('Habit Evaluation Service', () => {
       // Verificar UPDATE del hábito
       expect(mockConnection.execute).toHaveBeenCalledWith(
         expect.stringContaining('UPDATE HABITS'),
-        expect.arrayContaining([habitId, userId])
+        expect.arrayContaining([habitId, userId]),
       );
 
       // Verificar UPDATE de completamientos con notas
       expect(mockConnection.execute).toHaveBeenCalledWith(
         expect.stringContaining('UPDATE HABIT_COMPLETIONS'),
-        expect.arrayContaining([habitId, userId])
+        expect.arrayContaining([habitId, userId]),
       );
 
       // Verificar DELETE de completamientos sin notas
       expect(mockConnection.execute).toHaveBeenCalledWith(
         expect.stringContaining('DELETE FROM HABIT_COMPLETIONS'),
-        expect.arrayContaining([habitId, userId])
+        expect.arrayContaining([habitId, userId]),
       );
 
       // Verificar expiración de challenges
       expect(mockConnection.execute).toHaveBeenCalledWith(
         expect.stringContaining('UPDATE USER_CHALLENGES'),
-        expect.arrayContaining([habitId, userId])
+        expect.arrayContaining([habitId, userId]),
       );
     });
 
@@ -376,7 +359,7 @@ describe('Habit Evaluation Service', () => {
 
       expect(mockConnection.execute).toHaveBeenCalledWith(
         expect.stringContaining("disabled_reason = 'manual'"),
-        expect.arrayContaining([habitId, userId])
+        expect.arrayContaining([habitId, userId]),
       );
     });
 
@@ -392,13 +375,13 @@ describe('Habit Evaluation Service', () => {
       // Verificar que el UPDATE preserva registros con notas
       expect(mockConnection.execute).toHaveBeenCalledWith(
         expect.stringContaining('notes IS NOT NULL'),
-        expect.arrayContaining([habitId, userId])
+        expect.arrayContaining([habitId, userId]),
       );
 
       // Verificar que el DELETE solo elimina sin notas
       expect(mockConnection.execute).toHaveBeenCalledWith(
         expect.stringContaining('notes IS NULL'),
-        expect.arrayContaining([habitId, userId])
+        expect.arrayContaining([habitId, userId]),
       );
     });
 
@@ -413,15 +396,14 @@ describe('Habit Evaluation Service', () => {
 
       expect(mockConnection.execute).toHaveBeenCalledWith(
         expect.stringContaining("SET status = 'expired'"),
-        expect.arrayContaining([habitId, userId])
+        expect.arrayContaining([habitId, userId]),
       );
     });
 
     it('should rollback on error', async () => {
       mockConnection.execute.mockRejectedValueOnce(new Error('Deactivation failed'));
 
-      await expect(deactivateHabitManually(habitId, userId))
-        .rejects.toThrow('Deactivation failed');
+      await expect(deactivateHabitManually(habitId, userId)).rejects.toThrow('Deactivation failed');
 
       expect(mockConnection.rollback).toHaveBeenCalled();
       expect(mockConnection.commit).not.toHaveBeenCalled();

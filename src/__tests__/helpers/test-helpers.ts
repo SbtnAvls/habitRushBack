@@ -47,7 +47,7 @@ export const generateRefreshToken = (userId: string, expiresIn: string | number 
   return jwt.sign(
     { id: userId, type: 'refresh' },
     (process.env.REFRESH_TOKEN_SECRET || 'test_refresh_secret') as string,
-    options
+    options,
   );
 };
 
@@ -71,7 +71,7 @@ export const generateExpiredRefreshToken = (userId: string): string => {
   return jwt.sign(
     { id: userId, type: 'refresh' },
     (process.env.REFRESH_TOKEN_SECRET || 'test_refresh_secret') as string,
-    options
+    options,
   );
 };
 
@@ -119,7 +119,7 @@ export const mockNext = () => jest.fn();
 /**
  * Wait for a promise to resolve (useful for async tests)
  */
-export const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+export const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * Generate a test league competitor object
@@ -200,7 +200,7 @@ export const createTestLeagueRanking = (userPosition: number = 10, userId: strin
         user_id: isUser ? userId : isBot ? null : 'user-' + i,
         is_real: !isBot,
         name: isUser ? 'Test User' : isBot ? `Bot_${i}` : `Competitor_${i}`,
-      })
+      }),
     );
   }
 

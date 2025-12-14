@@ -1,4 +1,4 @@
-import { RowDataPacket } from 'mysql2';
+import { RowDataPacket, ResultSetHeader } from 'mysql2';
 import { v4 as uuidv4 } from 'uuid';
 import pool from '../db';
 
@@ -17,11 +17,11 @@ export class CompletionImage {
     completionId: string,
     userId: string,
     imageUrl: string,
-    thumbnailUrl: string | null
+    thumbnailUrl: string | null,
   ): Promise<CompletionImageRecord> {
     const [completionRows] = await pool.query<RowDataPacket[]>(
       'SELECT id FROM HABIT_COMPLETIONS WHERE id = ? AND user_id = ?',
-      [completionId, userId]
+      [completionId, userId],
     );
     if (completionRows.length === 0) {
       throw new Error('Completion not found or user does not have permission.');
@@ -29,7 +29,7 @@ export class CompletionImage {
 
     const [orderRows] = await pool.query<RowDataPacket[]>(
       'SELECT MAX(`order`) as max_order FROM COMPLETION_IMAGES WHERE completion_id = ?',
-      [completionId]
+      [completionId],
     );
     const currentMaxOrder = orderRows[0]?.max_order as number | null;
     const nextOrder = (currentMaxOrder ?? 0) + 1;
@@ -41,17 +41,17 @@ export class CompletionImage {
     const id = uuidv4();
     await pool.query(
       'INSERT INTO COMPLETION_IMAGES (id, completion_id, user_id, image_url, thumbnail_url, `order`) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, completionId, userId, imageUrl, thumbnailUrl, nextOrder]
+      [id, completionId, userId, imageUrl, thumbnailUrl, nextOrder],
     );
     const [rows] = await pool.query<RowDataPacket[]>('SELECT * FROM COMPLETION_IMAGES WHERE id = ?', [id]);
     return rows[0] as CompletionImageRecord;
   }
 
   static async delete(id: string, userId: string): Promise<boolean> {
-    const [result] = await pool.query(
-      'DELETE FROM COMPLETION_IMAGES WHERE id = ? AND user_id = ?',
-      [id, userId]
-    );
-    return (result as any).affectedRows > 0;
+    const [result] = await pool.query<ResultSetHeader>('DELETE FROM COMPLETION_IMAGES WHERE id = ? AND user_id = ?', [
+      id,
+      userId,
+    ]);
+    return result.affectedRows > 0;
   }
 }

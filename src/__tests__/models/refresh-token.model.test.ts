@@ -37,7 +37,7 @@ describe('RefreshTokenModel', () => {
         expect.objectContaining({
           user_id: tokenData.user_id,
           token: tokenData.token,
-        })
+        }),
       );
     });
 
@@ -75,7 +75,7 @@ describe('RefreshTokenModel', () => {
       expect(result).toEqual(mockToken);
       expect(mockPool.query).toHaveBeenCalledWith(
         'SELECT * FROM REFRESH_TOKENS WHERE token = ? AND expires_at > NOW()',
-        [token]
+        [token],
       );
     });
 
@@ -125,7 +125,7 @@ describe('RefreshTokenModel', () => {
       expect(result).toHaveLength(2);
       expect(mockPool.query).toHaveBeenCalledWith(
         'SELECT * FROM REFRESH_TOKENS WHERE user_id = ? AND expires_at > NOW()',
-        [userId]
+        [userId],
       );
     });
 
@@ -152,12 +152,9 @@ describe('RefreshTokenModel', () => {
 
       mockPool.query.mockResolvedValue([mockTokens] as any);
 
-      const result = await RefreshTokenModel.findByUserId(userId);
+      await RefreshTokenModel.findByUserId(userId);
 
-      expect(mockPool.query).toHaveBeenCalledWith(
-        expect.stringContaining('expires_at > NOW()'),
-        [userId]
-      );
+      expect(mockPool.query).toHaveBeenCalledWith(expect.stringContaining('expires_at > NOW()'), [userId]);
     });
   });
 
@@ -169,18 +166,13 @@ describe('RefreshTokenModel', () => {
 
       await RefreshTokenModel.deleteByToken(token);
 
-      expect(mockPool.query).toHaveBeenCalledWith(
-        'DELETE FROM REFRESH_TOKENS WHERE token = ?',
-        [token]
-      );
+      expect(mockPool.query).toHaveBeenCalledWith('DELETE FROM REFRESH_TOKENS WHERE token = ?', [token]);
     });
 
     it('should not throw error if token does not exist', async () => {
       mockPool.query.mockResolvedValue([{ affectedRows: 0 }] as any);
 
-      await expect(
-        RefreshTokenModel.deleteByToken('nonexistent-token')
-      ).resolves.not.toThrow();
+      await expect(RefreshTokenModel.deleteByToken('nonexistent-token')).resolves.not.toThrow();
     });
   });
 
@@ -192,18 +184,13 @@ describe('RefreshTokenModel', () => {
 
       await RefreshTokenModel.deleteByUserId(userId);
 
-      expect(mockPool.query).toHaveBeenCalledWith(
-        'DELETE FROM REFRESH_TOKENS WHERE user_id = ?',
-        [userId]
-      );
+      expect(mockPool.query).toHaveBeenCalledWith('DELETE FROM REFRESH_TOKENS WHERE user_id = ?', [userId]);
     });
 
     it('should not throw error if user has no tokens', async () => {
       mockPool.query.mockResolvedValue([{ affectedRows: 0 }] as any);
 
-      await expect(
-        RefreshTokenModel.deleteByUserId('user-with-no-tokens')
-      ).resolves.not.toThrow();
+      await expect(RefreshTokenModel.deleteByUserId('user-with-no-tokens')).resolves.not.toThrow();
     });
   });
 
@@ -213,9 +200,7 @@ describe('RefreshTokenModel', () => {
 
       await RefreshTokenModel.deleteExpired();
 
-      expect(mockPool.query).toHaveBeenCalledWith(
-        'DELETE FROM REFRESH_TOKENS WHERE expires_at <= NOW()'
-      );
+      expect(mockPool.query).toHaveBeenCalledWith('DELETE FROM REFRESH_TOKENS WHERE expires_at <= NOW()');
     });
 
     it('should not throw error if no expired tokens exist', async () => {

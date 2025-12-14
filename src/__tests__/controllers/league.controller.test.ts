@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import * as leagueController from '../../controllers/league.controller';
 import db from '../../db';
 import { mockRequest, mockResponse } from '../helpers/test-helpers';
@@ -83,14 +83,11 @@ describe('League Controller', () => {
 
       // Verify database queries
       expect(db.query).toHaveBeenCalledTimes(4);
-      expect(db.query).toHaveBeenNthCalledWith(
-        1,
-        'SELECT id FROM LEAGUE_WEEKS ORDER BY week_start DESC LIMIT 1'
-      );
+      expect(db.query).toHaveBeenNthCalledWith(1, 'SELECT id FROM LEAGUE_WEEKS ORDER BY week_start DESC LIMIT 1');
       expect(db.query).toHaveBeenNthCalledWith(
         2,
         'SELECT league_id FROM LEAGUE_COMPETITORS WHERE user_id = ? AND league_week_id = ?',
-        [userId, currentWeekId]
+        [userId, currentWeekId],
       );
     });
 
@@ -129,9 +126,7 @@ describe('League Controller', () => {
       // Mock empty LEAGUE_COMPETITORS query
       const competitorRows: RowDataPacket[] = [] as RowDataPacket[];
 
-      (db.query as jest.Mock)
-        .mockResolvedValueOnce([weekRows])
-        .mockResolvedValueOnce([competitorRows]);
+      (db.query as jest.Mock).mockResolvedValueOnce([weekRows]).mockResolvedValueOnce([competitorRows]);
 
       await leagueController.getCurrentLeague(req, res);
 
@@ -427,14 +422,8 @@ describe('League Controller', () => {
       expect(res.json).toHaveBeenCalledWith(historyRows);
 
       // Verify query
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('FROM USER_LEAGUE_HISTORY ulh'),
-        [userId]
-      );
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringContaining('ORDER BY lw.week_start DESC'),
-        [userId]
-      );
+      expect(db.query).toHaveBeenCalledWith(expect.stringContaining('FROM USER_LEAGUE_HISTORY ulh'), [userId]);
+      expect(db.query).toHaveBeenCalledWith(expect.stringContaining('ORDER BY lw.week_start DESC'), [userId]);
     });
 
     it('should return empty array if user has no league history', async () => {
@@ -485,7 +474,7 @@ describe('League Controller', () => {
             changeType: 'promoted',
             position: 2,
           }),
-        ])
+        ]),
       );
     });
 
@@ -519,7 +508,7 @@ describe('League Controller', () => {
             changeType: 'relegated',
             position: 18,
           }),
-        ])
+        ]),
       );
     });
 
@@ -553,7 +542,7 @@ describe('League Controller', () => {
             changeType: 'stayed',
             position: 10,
           }),
-        ])
+        ]),
       );
     });
 
@@ -601,12 +590,8 @@ describe('League Controller', () => {
       const response = (res.json as jest.Mock).mock.calls[0][0];
 
       // Verify ordering (most recent first)
-      expect(new Date(response[0].weekStart).getTime()).toBeGreaterThan(
-        new Date(response[1].weekStart).getTime()
-      );
-      expect(new Date(response[1].weekStart).getTime()).toBeGreaterThan(
-        new Date(response[2].weekStart).getTime()
-      );
+      expect(new Date(response[0].weekStart).getTime()).toBeGreaterThan(new Date(response[1].weekStart).getTime());
+      expect(new Date(response[1].weekStart).getTime()).toBeGreaterThan(new Date(response[2].weekStart).getTime());
     });
 
     it('should return history with multiple leagues progression', async () => {

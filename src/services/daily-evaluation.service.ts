@@ -15,20 +15,20 @@ export class DailyEvaluationService {
    */
   async runDailyEvaluation(): Promise<void> {
     if (this.isRunning) {
-      console.log('[DailyEvaluation] Already running, skipping...');
+      console.warn('[DailyEvaluation] Already running, skipping...');
       return;
     }
 
     const today = format(new Date(), 'yyyy-MM-dd');
 
     if (this.lastExecutionDate === today) {
-      console.log(`[DailyEvaluation] Already executed today (${today}), skipping...`);
+      console.warn(`[DailyEvaluation] Already executed today (${today}), skipping...`);
       return;
     }
 
     try {
       this.isRunning = true;
-      console.log(`[DailyEvaluation] Starting daily evaluation for ${today}`);
+      console.warn(`[DailyEvaluation] Starting daily evaluation for ${today}`);
 
       const startTime = Date.now();
       const results = await evaluateAllUsersDailyHabits();
@@ -40,24 +40,18 @@ export class DailyEvaluationService {
       const totalLivesLost = results.reduce((sum, r) => sum + r.lives_lost, 0);
       const totalHabitsDisabled = results.reduce((sum, r) => sum + r.habits_disabled.length, 0);
 
-      console.log(`[DailyEvaluation] Completed in ${endTime - startTime}ms`);
-      console.log(`[DailyEvaluation] Stats:`);
-      console.log(`  - Total users evaluated: ${totalUsers}`);
-      console.log(`  - Users with missed habits: ${usersWithMissedHabits}`);
-      console.log(`  - Total lives lost: ${totalLivesLost}`);
-      console.log(`  - Total habits disabled: ${totalHabitsDisabled}`);
+      console.warn(`[DailyEvaluation] Completed in ${endTime - startTime}ms`);
+      console.warn(
+        `[DailyEvaluation] Stats: users=${totalUsers}, missed=${usersWithMissedHabits}, livesLost=${totalLivesLost}, habitsDisabled=${totalHabitsDisabled}`,
+      );
 
       // Registrar usuarios que perdieron todas sus vidas
       const usersWithNoLives = results.filter(r => r.new_lives_total === 0);
       if (usersWithNoLives.length > 0) {
-        console.log(`[DailyEvaluation] ${usersWithNoLives.length} users have no lives left:`);
-        usersWithNoLives.forEach(user => {
-          console.log(`  - User ${user.user_id}: missed ${user.missed_habits.length} habits, disabled ${user.habits_disabled.length} habits`);
-        });
+        console.warn(`[DailyEvaluation] ${usersWithNoLives.length} users have no lives left`);
       }
 
       this.lastExecutionDate = today;
-
     } catch (error) {
       console.error('[DailyEvaluation] Error during evaluation:', error);
       throw error;
@@ -72,7 +66,7 @@ export class DailyEvaluationService {
    * @param runImmediately - Si debe ejecutarse inmediatamente al iniciar
    */
   startScheduled(intervalMs: number = 24 * 60 * 60 * 1000, runImmediately: boolean = false): NodeJS.Timeout {
-    console.log(`[DailyEvaluation] Starting scheduled service (interval: ${intervalMs}ms)`);
+    console.warn(`[DailyEvaluation] Starting scheduled service (interval: ${intervalMs}ms)`);
 
     if (runImmediately) {
       this.runDailyEvaluation().catch(error => {
@@ -114,7 +108,7 @@ export class DailyEvaluationService {
   startDailyAt0005(): NodeJS.Timeout {
     const timeUntilNext = DailyEvaluationService.getTimeUntilNextExecution();
 
-    console.log(`[DailyEvaluation] Scheduling first execution in ${Math.round(timeUntilNext / 1000 / 60)} minutes`);
+    console.warn(`[DailyEvaluation] Scheduling first execution in ${Math.round(timeUntilNext / 1000 / 60)} minutes`);
 
     // Ejecutar la primera vez en el momento programado
     setTimeout(() => {

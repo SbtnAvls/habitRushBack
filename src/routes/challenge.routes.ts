@@ -1,10 +1,6 @@
 import { Router } from 'express';
 import { ChallengeController } from '../controllers/challenge.controller';
-import {
-  submitProof,
-  getProofStatus,
-  getAvailableForRevival
-} from '../controllers/challenge-proof.controller';
+import { submitProof, getProofStatus, getAvailableForRevival } from '../controllers/challenge-proof.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 
 const router = Router();

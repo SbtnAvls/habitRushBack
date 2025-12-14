@@ -54,4 +54,3 @@ export class UserModel {
     await pool.query('UPDATE USERS SET lives = ? WHERE id = ?', [newLives, userId]);
   }
 }
-

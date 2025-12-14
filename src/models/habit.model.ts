@@ -35,12 +35,17 @@ export const createHabit = async (habit: Omit<Habit, 'id' | 'created_at' | 'upda
 };
 
 export const findHabitsByUserId = async (userId: string): Promise<Habit[]> => {
-  const [rows] = await pool.query<RowDataPacket[]>('SELECT * FROM HABITS WHERE user_id = ? AND deleted_at IS NULL', [userId]);
+  const [rows] = await pool.query<RowDataPacket[]>('SELECT * FROM HABITS WHERE user_id = ? AND deleted_at IS NULL', [
+    userId,
+  ]);
   return rows as Habit[];
 };
 
 export const findHabitById = async (id: string, userId: string): Promise<Habit | undefined> => {
-  const [rows] = await pool.query<RowDataPacket[]>('SELECT * FROM HABITS WHERE id = ? AND user_id = ? AND deleted_at IS NULL', [id, userId]);
+  const [rows] = await pool.query<RowDataPacket[]>(
+    'SELECT * FROM HABITS WHERE id = ? AND user_id = ? AND deleted_at IS NULL',
+    [id, userId],
+  );
   return rows[0] as Habit | undefined;
 };
 

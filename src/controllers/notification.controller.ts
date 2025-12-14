@@ -1,22 +1,27 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { NotificationModel } from '../models/notification.model';
+import { AuthRequest } from '../middleware/auth.middleware';
 
 export class NotificationController {
-
-  static async getNotificationsForUser(req: Request, res: Response) {
+  static async getNotificationsForUser(req: AuthRequest, res: Response) {
     try {
-      const userId = (req as any).user.id;
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: 'Not authenticated' });
+      }
       const notifications = await NotificationModel.findByUserId(userId);
       res.json(notifications);
-    } catch (error) {
-      console.error(error);
+    } catch (_error) {
       res.status(500).json({ message: 'Error getting notifications' });
     }
   }
 
-  static async markNotificationAsRead(req: Request, res: Response) {
+  static async markNotificationAsRead(req: AuthRequest, res: Response) {
     try {
-      const userId = (req as any).user.id;
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: 'Not authenticated' });
+      }
       const { id } = req.params;
 
       const notification = await NotificationModel.findById(id);
@@ -32,15 +37,17 @@ export class NotificationController {
       await NotificationModel.updateReadStatus(id, true);
 
       res.status(204).send();
-    } catch (error) {
-      console.error(error);
+    } catch (_error) {
       res.status(500).json({ message: 'Error marking notification as read' });
     }
   }
 
-  static async deleteNotification(req: Request, res: Response) {
+  static async deleteNotification(req: AuthRequest, res: Response) {
     try {
-      const userId = (req as any).user.id;
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: 'Not authenticated' });
+      }
       const { id } = req.params;
 
       const notification = await NotificationModel.findById(id);
@@ -57,8 +64,7 @@ export class NotificationController {
       await NotificationModel.deleteById(id);
 
       res.status(204).send();
-    } catch (error) {
-      console.error(error);
+    } catch (_error) {
       res.status(500).json({ message: 'Error deleting notification' });
     }
   }

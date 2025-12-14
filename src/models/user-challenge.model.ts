@@ -1,6 +1,6 @@
 import pool from '../db';
 import { v4 as uuidv4 } from 'uuid';
-import { RowDataPacket } from 'mysql2';
+import { RowDataPacket, ResultSetHeader } from 'mysql2';
 
 export interface UserChallenge {
   id: string;
@@ -30,7 +30,6 @@ const mapUserChallenge = (row: RowDataPacket): UserChallenge => ({
 });
 
 export class UserChallengeModel {
-
   static async getForUser(userId: string): Promise<UserChallengeWithDetails[]> {
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT uc.*, 
@@ -42,34 +41,39 @@ export class UserChallengeModel {
        JOIN CHALLENGES c ON uc.challenge_id = c.id
        WHERE uc.user_id = ?
        ORDER BY uc.assigned_at DESC`,
-      [userId]
+      [userId],
     );
     return rows as unknown as UserChallengeWithDetails[];
   }
 
   static async assign(userId: string, challengeId: string, habitId: string): Promise<UserChallenge> {
     const id = uuidv4();
-    await pool.query(
-      'INSERT INTO USER_CHALLENGES (id, user_id, challenge_id, habit_id) VALUES (?, ?, ?, ?)',
-      [id, userId, challengeId, habitId]
-    );
+    await pool.query('INSERT INTO USER_CHALLENGES (id, user_id, challenge_id, habit_id) VALUES (?, ?, ?, ?)', [
+      id,
+      userId,
+      challengeId,
+      habitId,
+    ]);
     const [rows] = await pool.query<RowDataPacket[]>('SELECT * FROM USER_CHALLENGES WHERE id = ?', [id]);
     return mapUserChallenge(rows[0]);
   }
 
-  static async updateStatus(userChallengeId: string, userId: string, status: 'completed' | 'discarded'): Promise<UserChallenge | null> {
+  static async updateStatus(
+    userChallengeId: string,
+    userId: string,
+    status: 'completed' | 'discarded',
+  ): Promise<UserChallenge | null> {
     const completed_at = status === 'completed' ? new Date() : null;
-    const [result] = await pool.query(
+    const [result] = await pool.query<ResultSetHeader>(
       'UPDATE USER_CHALLENGES SET status = ?, completed_at = ? WHERE id = ? AND user_id = ?',
-      [status, completed_at, userChallengeId, userId]
+      [status, completed_at, userChallengeId, userId],
     );
 
-    if ((result as any).affectedRows === 0) {
+    if (result.affectedRows === 0) {
       return null;
     }
 
     const [rows] = await pool.query<RowDataPacket[]>('SELECT * FROM USER_CHALLENGES WHERE id = ?', [userChallengeId]);
     return mapUserChallenge(rows[0]);
   }
-
 }

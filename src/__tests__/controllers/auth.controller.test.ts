@@ -51,7 +51,7 @@ describe('Auth Controller', () => {
           accessToken: expect.any(String),
           refreshToken: expect.any(String),
           expiresIn: 900,
-        })
+        }),
       );
       expect(RefreshTokenModel.create).toHaveBeenCalled();
     });
@@ -195,7 +195,7 @@ describe('Auth Controller', () => {
           accessToken: expect.any(String),
           refreshToken: expect.any(String),
           expiresIn: 900,
-        })
+        }),
       );
       expect(RefreshTokenModel.create).toHaveBeenCalled();
     });
@@ -322,7 +322,7 @@ describe('Auth Controller', () => {
           accessToken: expect.any(String),
           refreshToken: expect.any(String),
           expiresIn: 900,
-        })
+        }),
       );
       expect(RefreshTokenModel.deleteByToken).toHaveBeenCalledWith(refreshToken);
       expect(RefreshTokenModel.create).toHaveBeenCalled();
@@ -363,7 +363,7 @@ describe('Auth Controller', () => {
       const expiredToken = jwt.sign(
         { id: userId, type: 'refresh' },
         process.env.REFRESH_TOKEN_SECRET || 'test_refresh_secret',
-        { expiresIn: '-1h' }
+        { expiresIn: '-1h' },
       );
 
       const req = mockRequest({
@@ -449,12 +449,12 @@ describe('Auth Controller', () => {
         expect.objectContaining({
           id: userId,
           email: user.email,
-        })
+        }),
       );
       expect(res.json).toHaveBeenCalledWith(
         expect.not.objectContaining({
           password_hash: expect.anything(),
-        })
+        }),
       );
     });
 
@@ -511,7 +511,7 @@ describe('Auth Controller', () => {
         expect.objectContaining({
           token: accessToken,
           user_id: userId,
-        })
+        }),
       );
       expect(RefreshTokenModel.deleteByToken).toHaveBeenCalledWith(refreshToken);
       expect(res.json).toHaveBeenCalledWith({

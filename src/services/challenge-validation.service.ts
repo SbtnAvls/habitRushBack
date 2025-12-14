@@ -1,5 +1,6 @@
 import pool from '../db';
 import { v4 as uuidv4 } from 'uuid';
+import { RowDataPacket } from 'mysql2';
 import { reviveUser } from './habit-evaluation.service';
 
 export interface ChallengeProof {
@@ -24,7 +25,7 @@ export interface ValidationResult {
  * Valida las pruebas enviadas para un challenge usando AI
  * Por ahora es una simulación, pero aquí se integraría con un servicio de AI real
  */
-async function validateWithAI(proof: ChallengeProof, challengeDetails: any): Promise<ValidationResult> {
+async function validateWithAI(proof: ChallengeProof, _challengeDetails: RowDataPacket): Promise<ValidationResult> {
   // TODO: Integrar con servicio de AI real (OpenAI, Anthropic, etc.)
   // Por ahora, simulamos una validación básica
 
@@ -43,26 +44,26 @@ async function validateWithAI(proof: ChallengeProof, challengeDetails: any): Pro
     return {
       is_valid: true,
       confidence_score: 0.85,
-      reasoning: 'Pruebas de texto e imagen proporcionadas. Validación aprobada.'
+      reasoning: 'Pruebas de texto e imagen proporcionadas. Validación aprobada.',
     };
   } else if (proof.proof_type === 'text' && hasText) {
     return {
       is_valid: true,
       confidence_score: 0.75,
-      reasoning: 'Descripción detallada proporcionada. Validación aprobada.'
+      reasoning: 'Descripción detallada proporcionada. Validación aprobada.',
     };
   } else if (proof.proof_type === 'image' && hasImage) {
     return {
       is_valid: true,
-      confidence_score: 0.70,
-      reasoning: 'Evidencia fotográfica proporcionada. Validación aprobada.'
+      confidence_score: 0.7,
+      reasoning: 'Evidencia fotográfica proporcionada. Validación aprobada.',
     };
   }
 
   return {
     is_valid: false,
     confidence_score: 0.2,
-    reasoning: 'Pruebas insuficientes o no cumplen con los requisitos del reto.'
+    reasoning: 'Pruebas insuficientes o no cumplen con los requisitos del reto.',
   };
 }
 
@@ -73,7 +74,7 @@ export async function submitChallengeProof(
   userId: string,
   userChallengeId: string,
   proofText?: string,
-  proofImageUrl?: string
+  proofImageUrl?: string,
 ): Promise<{ success: boolean; message: string; validationResult?: ValidationResult }> {
   const connection = await pool.getConnection();
 
@@ -81,35 +82,34 @@ export async function submitChallengeProof(
     await connection.beginTransaction();
 
     // 1. Verificar que el user challenge existe y está asignado al usuario
-    const [userChallenges] = await connection.execute<any[]>(
+    const [userChallenges] = await connection.execute<RowDataPacket[]>(
       `SELECT uc.*, c.title, c.description, c.difficulty
        FROM USER_CHALLENGES uc
        JOIN CHALLENGES c ON uc.challenge_id = c.id
        WHERE uc.id = UUID_TO_BIN(?)
        AND uc.user_id = UUID_TO_BIN(?)
        AND uc.status = 'assigned'`,
-      [userChallengeId, userId]
+      [userChallengeId, userId],
     );
 
     if (userChallenges.length === 0) {
       await connection.rollback();
       return {
         success: false,
-        message: 'Challenge no encontrado o no está asignado'
+        message: 'Challenge no encontrado o no está asignado',
       };
     }
 
     // 2. Verificar que el usuario no tiene vidas
-    const [users] = await connection.execute<any[]>(
-      `SELECT lives FROM USERS WHERE id = UUID_TO_BIN(?)`,
-      [userId]
-    );
+    const [users] = await connection.execute<RowDataPacket[]>('SELECT lives FROM USERS WHERE id = UUID_TO_BIN(?)', [
+      userId,
+    ]);
 
     if (users[0].lives > 0) {
       await connection.rollback();
       return {
         success: false,
-        message: 'Este sistema de validación solo se usa cuando no tienes vidas'
+        message: 'Este sistema de validación solo se usa cuando no tienes vidas',
       };
     }
 
@@ -125,7 +125,7 @@ export async function submitChallengeProof(
       await connection.rollback();
       return {
         success: false,
-        message: 'Debes proporcionar al menos una prueba (texto o imagen)'
+        message: 'Debes proporcionar al menos una prueba (texto o imagen)',
       };
     }
 
@@ -138,14 +138,14 @@ export async function submitChallengeProof(
       proof_image_url: proofImageUrl,
       proof_type: proofType,
       validation_status: 'pending',
-      created_at: new Date()
+      created_at: new Date(),
     };
 
     await connection.execute(
       `INSERT INTO CHALLENGE_PROOFS
        (id, user_challenge_id, proof_text, proof_image_url, proof_type, validation_status)
        VALUES (UUID_TO_BIN(?), UUID_TO_BIN(?), ?, ?, ?, ?)`,
-      [proofId, userChallengeId, proofText, proofImageUrl, proofType, 'pending']
+      [proofId, userChallengeId, proofText, proofImageUrl, proofType, 'pending'],
     );
 
     // 5. Validar con AI
@@ -159,7 +159,7 @@ export async function submitChallengeProof(
            validation_result = ?,
            validated_at = NOW()
        WHERE id = UUID_TO_BIN(?)`,
-      [validationStatus, JSON.stringify(validationResult), proofId]
+      [validationStatus, JSON.stringify(validationResult), proofId],
     );
 
     // 7. Si la validación fue exitosa
@@ -170,7 +170,7 @@ export async function submitChallengeProof(
          SET status = 'completed',
              completed_at = NOW()
          WHERE id = UUID_TO_BIN(?)`,
-        [userChallengeId]
+        [userChallengeId],
       );
 
       // Registrar en LIFE_HISTORY
@@ -179,7 +179,7 @@ export async function submitChallengeProof(
         `INSERT INTO LIFE_HISTORY
          (id, user_id, lives_change, current_lives, reason, related_user_challenge_id, created_at)
          VALUES (UUID_TO_BIN(?), UUID_TO_BIN(?), ?, ?, ?, UUID_TO_BIN(?), NOW())`,
-        [historyId, userId, 0, 0, 'challenge_completed', userChallengeId]
+        [historyId, userId, 0, 0, 'challenge_completed', userChallengeId],
       );
 
       // Revivir al usuario (restaurar vidas y reactivar hábitos)
@@ -189,17 +189,16 @@ export async function submitChallengeProof(
       return {
         success: true,
         message: 'Challenge completado exitosamente. ¡Has sido revivido con todas tus vidas!',
-        validationResult
+        validationResult,
       };
     } else {
       await connection.commit();
       return {
         success: false,
         message: 'Las pruebas no fueron suficientes para validar el challenge. Intenta nuevamente.',
-        validationResult
+        validationResult,
       };
     }
-
   } catch (error) {
     await connection.rollback();
     console.error('Error submitting challenge proof:', error);
@@ -212,14 +211,11 @@ export async function submitChallengeProof(
 /**
  * Obtiene el estado de validación de las pruebas de un challenge
  */
-export async function getChallengeProofStatus(
-  userId: string,
-  userChallengeId: string
-): Promise<ChallengeProof | null> {
+export async function getChallengeProofStatus(userId: string, userChallengeId: string): Promise<ChallengeProof | null> {
   const connection = await pool.getConnection();
 
   try {
-    const [proofs] = await connection.execute<any[]>(
+    const [proofs] = await connection.execute<RowDataPacket[]>(
       `SELECT cp.*
        FROM CHALLENGE_PROOFS cp
        JOIN USER_CHALLENGES uc ON cp.user_challenge_id = uc.id
@@ -227,7 +223,7 @@ export async function getChallengeProofStatus(
        AND uc.user_id = UUID_TO_BIN(?)
        ORDER BY cp.created_at DESC
        LIMIT 1`,
-      [userChallengeId, userId]
+      [userChallengeId, userId],
     );
 
     if (proofs.length === 0) {
@@ -244,23 +240,34 @@ export async function getChallengeProofStatus(
       validation_status: proof.validation_status,
       validation_result: proof.validation_result ? JSON.parse(proof.validation_result) : undefined,
       validated_at: proof.validated_at,
-      created_at: proof.created_at
+      created_at: proof.created_at,
     };
-
   } finally {
     connection.release();
   }
 }
 
+interface AvailableChallenge {
+  user_challenge_id: string;
+  challenge_id: string;
+  title: string;
+  description: string;
+  difficulty: string;
+  type: string;
+  estimated_time: number;
+  habit_name: string;
+  assigned_at: Date;
+}
+
 /**
  * Lista todos los challenges disponibles para un usuario sin vidas
  */
-export async function getAvailableChallengesForRevival(userId: string): Promise<any[]> {
+export async function getAvailableChallengesForRevival(userId: string): Promise<AvailableChallenge[]> {
   const connection = await pool.getConnection();
 
   try {
     // Obtener challenges asignados que no han sido completados
-    const [challenges] = await connection.execute<any[]>(
+    const [challenges] = await connection.execute<RowDataPacket[]>(
       `SELECT
         uc.id as user_challenge_id,
         c.id as challenge_id,
@@ -277,11 +284,13 @@ export async function getAvailableChallengesForRevival(userId: string): Promise<
        WHERE uc.user_id = UUID_TO_BIN(?)
        AND uc.status = 'assigned'
        AND c.is_active = 1`,
-      [userId]
+      [userId],
     );
 
     return challenges.map(c => ({
-      user_challenge_id: c.user_challenge_id.toString('hex').replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5'),
+      user_challenge_id: c.user_challenge_id
+        .toString('hex')
+        .replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5'),
       challenge_id: c.challenge_id.toString('hex').replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5'),
       title: c.title,
       description: c.description,
@@ -289,9 +298,8 @@ export async function getAvailableChallengesForRevival(userId: string): Promise<
       type: c.type,
       estimated_time: c.estimated_time,
       habit_name: c.habit_name,
-      assigned_at: c.assigned_at
+      assigned_at: c.assigned_at,
     }));
-
   } finally {
     connection.release();
   }

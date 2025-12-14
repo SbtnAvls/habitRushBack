@@ -2,7 +2,7 @@ import { Router } from 'express';
 import {
   getLifeChallenges,
   redeemLifeChallenge,
-  getLifeChallengeStatus
+  getLifeChallengeStatus,
 } from '../controllers/life-challenge.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 

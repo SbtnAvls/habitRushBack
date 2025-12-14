@@ -1,4 +1,4 @@
-import { RowDataPacket } from 'mysql2';
+import { RowDataPacket, ResultSetHeader } from 'mysql2';
 import { v4 as uuidv4 } from 'uuid';
 import pool from '../db';
 
@@ -33,30 +33,21 @@ export class HabitCompletion {
   static async getForHabit(userId: string, habitId: string): Promise<HabitCompletionRecord[]> {
     const [rows] = await pool.query<RowDataPacket[]>(
       'SELECT * FROM HABIT_COMPLETIONS WHERE user_id = ? AND habit_id = ? ORDER BY `date` DESC',
-      [userId, habitId]
+      [userId, habitId],
     );
     return rows as HabitCompletionRecord[];
   }
 
   static async getById(id: string, userId: string): Promise<HabitCompletionRecord | null> {
-    const [rows] = await pool.query<RowDataPacket[]>(
-      'SELECT * FROM HABIT_COMPLETIONS WHERE id = ? AND user_id = ?',
-      [id, userId]
-    );
+    const [rows] = await pool.query<RowDataPacket[]>('SELECT * FROM HABIT_COMPLETIONS WHERE id = ? AND user_id = ?', [
+      id,
+      userId,
+    ]);
     return rows.length > 0 ? (rows[0] as HabitCompletionRecord) : null;
   }
 
   static async createOrUpdate(data: HabitCompletionUpsertInput): Promise<HabitCompletionRecord> {
-    const {
-      habit_id,
-      user_id,
-      date,
-      completed,
-      progress_type,
-      progress_value,
-      target_value,
-      notes,
-    } = data;
+    const { habit_id, user_id, date, completed, progress_type, progress_value, target_value, notes } = data;
 
     if (!VALID_PROGRESS_TYPES.includes(progress_type)) {
       throw new Error('Invalid progress_type provided');
@@ -64,7 +55,7 @@ export class HabitCompletion {
 
     const [existing] = await pool.query<RowDataPacket[]>(
       'SELECT id FROM HABIT_COMPLETIONS WHERE habit_id = ? AND user_id = ? AND `date` = ?',
-      [habit_id, user_id, date]
+      [habit_id, user_id, date],
     );
 
     const completedAt = completed ? new Date() : null;
@@ -83,15 +74,7 @@ export class HabitCompletion {
              notes = ?, 
              completed_at = ?
          WHERE id = ?`,
-        [
-          completed,
-          progress_type,
-          normalizedProgressValue,
-          normalizedTargetValue,
-          normalizedNotes,
-          completedAt,
-          id,
-        ]
+        [completed, progress_type, normalizedProgressValue, normalizedTargetValue, normalizedNotes, completedAt, id],
       );
       const [rows] = await pool.query<RowDataPacket[]>('SELECT * FROM HABIT_COMPLETIONS WHERE id = ?', [id]);
       return rows[0] as HabitCompletionRecord;
@@ -113,24 +96,28 @@ export class HabitCompletion {
         normalizedTargetValue,
         normalizedNotes,
         completedAt,
-      ]
+      ],
     );
     const [rows] = await pool.query<RowDataPacket[]>('SELECT * FROM HABIT_COMPLETIONS WHERE id = ?', [id]);
     return rows[0] as HabitCompletionRecord;
   }
 
-  static async update(id: string, userId: string, data: Partial<Pick<HabitCompletionUpsertInput, 'notes'>>): Promise<HabitCompletionRecord | null> {
+  static async update(
+    id: string,
+    userId: string,
+    data: Partial<Pick<HabitCompletionUpsertInput, 'notes'>>,
+  ): Promise<HabitCompletionRecord | null> {
     const hasNotesField = Object.prototype.hasOwnProperty.call(data, 'notes');
     if (!hasNotesField) {
       return null;
     }
 
-    const [result] = await pool.query(
+    const [result] = await pool.query<ResultSetHeader>(
       'UPDATE HABIT_COMPLETIONS SET notes = ? WHERE id = ? AND user_id = ?',
-      [data.notes ?? null, id, userId]
-    )
+      [data.notes ?? null, id, userId],
+    );
 
-    if ((result as any).affectedRows === 0) {
+    if (result.affectedRows === 0) {
       return null;
     }
 
@@ -139,7 +126,10 @@ export class HabitCompletion {
   }
 
   static async delete(id: string, userId: string): Promise<boolean> {
-    const [result] = await pool.query('DELETE FROM HABIT_COMPLETIONS WHERE id = ? AND user_id = ?', [id, userId]);
-    return (result as any).affectedRows > 0;
+    const [result] = await pool.query<ResultSetHeader>('DELETE FROM HABIT_COMPLETIONS WHERE id = ? AND user_id = ?', [
+      id,
+      userId,
+    ]);
+    return result.affectedRows > 0;
   }
 }

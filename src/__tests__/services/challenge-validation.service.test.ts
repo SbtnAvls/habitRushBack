@@ -2,7 +2,7 @@ import pool from '../../db';
 import {
   submitChallengeProof,
   getChallengeProofStatus,
-  getAvailableChallengesForRevival
+  getAvailableChallengesForRevival,
 } from '../../services/challenge-validation.service';
 import * as habitEvaluationService from '../../services/habit-evaluation.service';
 
@@ -10,8 +10,8 @@ import * as habitEvaluationService from '../../services/habit-evaluation.service
 jest.mock('../../db', () => ({
   __esModule: true,
   default: {
-    getConnection: jest.fn()
-  }
+    getConnection: jest.fn(),
+  },
 }));
 
 // Mock del servicio de evaluación de hábitos
@@ -26,7 +26,7 @@ describe('Challenge Validation Service', () => {
       beginTransaction: jest.fn(),
       commit: jest.fn(),
       rollback: jest.fn(),
-      release: jest.fn()
+      release: jest.fn(),
     };
 
     (pool.getConnection as jest.Mock).mockResolvedValue(mockConnection);
@@ -40,12 +40,16 @@ describe('Challenge Validation Service', () => {
     it('should submit proof and approve when validation passes', async () => {
       // Mock: Verificar que el challenge existe
       mockConnection.execute
-        .mockResolvedValueOnce([[{
-          id: Buffer.from('uc-123'),
-          title: 'Test Challenge',
-          description: 'Complete 30 minutes',
-          difficulty: 'medium'
-        }]])
+        .mockResolvedValueOnce([
+          [
+            {
+              id: Buffer.from('uc-123'),
+              title: 'Test Challenge',
+              description: 'Complete 30 minutes',
+              difficulty: 'medium',
+            },
+          ],
+        ])
         // Mock: Verificar que usuario no tiene vidas
         .mockResolvedValueOnce([[{ lives: 0 }]])
         // Mock: INSERT challenge proof
@@ -64,7 +68,7 @@ describe('Challenge Validation Service', () => {
         userId,
         userChallengeId,
         'Completé 35 minutos de ejercicio en el parque',
-        'https://cloudinary.com/image.jpg'
+        'https://cloudinary.com/image.jpg',
       );
 
       expect(result.success).toBe(true);
@@ -76,10 +80,14 @@ describe('Challenge Validation Service', () => {
 
     it('should reject proof when validation fails', async () => {
       mockConnection.execute
-        .mockResolvedValueOnce([[{
-          id: Buffer.from('uc-123'),
-          title: 'Test Challenge'
-        }]])
+        .mockResolvedValueOnce([
+          [
+            {
+              id: Buffer.from('uc-123'),
+              title: 'Test Challenge',
+            },
+          ],
+        ])
         .mockResolvedValueOnce([[{ lives: 0 }]])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]);
@@ -88,7 +96,7 @@ describe('Challenge Validation Service', () => {
         userId,
         userChallengeId,
         'abc', // Texto muy corto
-        undefined
+        undefined,
       );
 
       expect(result.success).toBe(false);
@@ -100,11 +108,7 @@ describe('Challenge Validation Service', () => {
     it('should return error if challenge not found', async () => {
       mockConnection.execute.mockResolvedValueOnce([[]]);
 
-      const result = await submitChallengeProof(
-        userId,
-        userChallengeId,
-        'Some proof'
-      );
+      const result = await submitChallengeProof(userId, userChallengeId, 'Some proof');
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('no encontrado');
@@ -116,11 +120,7 @@ describe('Challenge Validation Service', () => {
         .mockResolvedValueOnce([[{ id: Buffer.from('uc-123') }]])
         .mockResolvedValueOnce([[{ lives: 2 }]]);
 
-      const result = await submitChallengeProof(
-        userId,
-        userChallengeId,
-        'Some proof'
-      );
+      const result = await submitChallengeProof(userId, userChallengeId, 'Some proof');
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('solo se usa cuando no tienes vidas');
@@ -132,12 +132,7 @@ describe('Challenge Validation Service', () => {
         .mockResolvedValueOnce([[{ id: Buffer.from('uc-123') }]])
         .mockResolvedValueOnce([[{ lives: 0 }]]);
 
-      const result = await submitChallengeProof(
-        userId,
-        userChallengeId,
-        undefined,
-        undefined
-      );
+      const result = await submitChallengeProof(userId, userChallengeId, undefined, undefined);
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('al menos una prueba');
@@ -159,7 +154,7 @@ describe('Challenge Validation Service', () => {
         userId,
         userChallengeId,
         'Detailed description of challenge completion',
-        'https://cloudinary.com/proof.jpg'
+        'https://cloudinary.com/proof.jpg',
       );
 
       expect(result.success).toBe(true);
@@ -174,8 +169,8 @@ describe('Challenge Validation Service', () => {
           'Detailed description of challenge completion',
           'https://cloudinary.com/proof.jpg',
           'both',
-          'pending'
-        ])
+          'pending',
+        ]),
       );
     });
 
@@ -190,30 +185,18 @@ describe('Challenge Validation Service', () => {
 
       (habitEvaluationService.reviveUser as jest.Mock).mockResolvedValue(undefined);
 
-      await submitChallengeProof(
-        userId,
-        userChallengeId,
-        'Valid proof text'
-      );
+      await submitChallengeProof(userId, userChallengeId, 'Valid proof text');
 
       expect(mockConnection.execute).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO LIFE_HISTORY'),
-        expect.arrayContaining([
-          expect.any(String),
-          userId,
-          0,
-          0,
-          'challenge_completed',
-          userChallengeId
-        ])
+        expect.arrayContaining([expect.any(String), userId, 0, 0, 'challenge_completed', userChallengeId]),
       );
     });
 
     it('should rollback on error', async () => {
       mockConnection.execute.mockRejectedValueOnce(new Error('Database error'));
 
-      await expect(submitChallengeProof(userId, userChallengeId, 'proof'))
-        .rejects.toThrow();
+      await expect(submitChallengeProof(userId, userChallengeId, 'proof')).rejects.toThrow();
 
       expect(mockConnection.rollback).toHaveBeenCalled();
     });
@@ -224,21 +207,25 @@ describe('Challenge Validation Service', () => {
     const userChallengeId = 'uc-123';
 
     it('should return proof status when it exists', async () => {
-      mockConnection.execute.mockResolvedValueOnce([[{
-        id: Buffer.from('proof-123'),
-        user_challenge_id: Buffer.from('uc-123'),
-        proof_text: 'My proof',
-        proof_image_url: 'https://image.jpg',
-        proof_type: 'both',
-        validation_status: 'approved',
-        validation_result: JSON.stringify({
-          is_valid: true,
-          confidence_score: 0.9,
-          reasoning: 'Good proof'
-        }),
-        validated_at: new Date(),
-        created_at: new Date()
-      }]]);
+      mockConnection.execute.mockResolvedValueOnce([
+        [
+          {
+            id: Buffer.from('proof-123'),
+            user_challenge_id: Buffer.from('uc-123'),
+            proof_text: 'My proof',
+            proof_image_url: 'https://image.jpg',
+            proof_type: 'both',
+            validation_status: 'approved',
+            validation_result: JSON.stringify({
+              is_valid: true,
+              confidence_score: 0.9,
+              reasoning: 'Good proof',
+            }),
+            validated_at: new Date(),
+            created_at: new Date(),
+          },
+        ],
+      ]);
 
       const result = await getChallengeProofStatus(userId, userChallengeId);
 
@@ -258,17 +245,21 @@ describe('Challenge Validation Service', () => {
 
     it('should return most recent proof', async () => {
       // La query tiene ORDER BY created_at DESC LIMIT 1
-      mockConnection.execute.mockResolvedValueOnce([[{
-        id: Buffer.from('proof-latest'),
-        validation_status: 'pending',
-        created_at: new Date()
-      }]]);
+      mockConnection.execute.mockResolvedValueOnce([
+        [
+          {
+            id: Buffer.from('proof-latest'),
+            validation_status: 'pending',
+            created_at: new Date(),
+          },
+        ],
+      ]);
 
-      const result = await getChallengeProofStatus(userId, userChallengeId);
+      await getChallengeProofStatus(userId, userChallengeId);
 
       expect(mockConnection.execute).toHaveBeenCalledWith(
         expect.stringContaining('ORDER BY cp.created_at DESC'),
-        expect.any(Array)
+        expect.any(Array),
       );
     });
 
@@ -276,15 +267,19 @@ describe('Challenge Validation Service', () => {
       const validationData = {
         is_valid: true,
         confidence_score: 0.85,
-        reasoning: 'Well documented'
+        reasoning: 'Well documented',
       };
 
-      mockConnection.execute.mockResolvedValueOnce([[{
-        id: Buffer.from('proof-123'),
-        validation_result: JSON.stringify(validationData),
-        validation_status: 'approved',
-        created_at: new Date()
-      }]]);
+      mockConnection.execute.mockResolvedValueOnce([
+        [
+          {
+            id: Buffer.from('proof-123'),
+            validation_result: JSON.stringify(validationData),
+            validation_status: 'approved',
+            created_at: new Date(),
+          },
+        ],
+      ]);
 
       const result = await getChallengeProofStatus(userId, userChallengeId);
 
@@ -296,30 +291,32 @@ describe('Challenge Validation Service', () => {
     const userId = 'user-123';
 
     it('should return assigned challenges for user without lives', async () => {
-      mockConnection.execute.mockResolvedValueOnce([[
-        {
-          id: Buffer.from('uc-1'),
-          challenge_id: Buffer.from('c-1'),
-          title: 'Challenge 1',
-          description: 'Description 1',
-          difficulty: 'easy',
-          type: 'exercise',
-          estimated_time: 30,
-          habit_name: 'Running',
-          assigned_at: new Date()
-        },
-        {
-          id: Buffer.from('uc-2'),
-          challenge_id: Buffer.from('c-2'),
-          title: 'Challenge 2',
-          description: 'Description 2',
-          difficulty: 'medium',
-          type: 'learning',
-          estimated_time: 60,
-          habit_name: 'Reading',
-          assigned_at: new Date()
-        }
-      ]]);
+      mockConnection.execute.mockResolvedValueOnce([
+        [
+          {
+            id: Buffer.from('uc-1'),
+            challenge_id: Buffer.from('c-1'),
+            title: 'Challenge 1',
+            description: 'Description 1',
+            difficulty: 'easy',
+            type: 'exercise',
+            estimated_time: 30,
+            habit_name: 'Running',
+            assigned_at: new Date(),
+          },
+          {
+            id: Buffer.from('uc-2'),
+            challenge_id: Buffer.from('c-2'),
+            title: 'Challenge 2',
+            description: 'Description 2',
+            difficulty: 'medium',
+            type: 'learning',
+            estimated_time: 60,
+            habit_name: 'Reading',
+            assigned_at: new Date(),
+          },
+        ],
+      ]);
 
       const result = await getAvailableChallengesForRevival(userId);
 
@@ -337,19 +334,21 @@ describe('Challenge Validation Service', () => {
     });
 
     it('should only return challenges with status assigned', async () => {
-      mockConnection.execute.mockResolvedValueOnce([[
-        {
-          id: Buffer.from('uc-1'),
-          challenge_id: Buffer.from('c-1'),
-          title: 'Available Challenge'
-        }
-      ]]);
+      mockConnection.execute.mockResolvedValueOnce([
+        [
+          {
+            id: Buffer.from('uc-1'),
+            challenge_id: Buffer.from('c-1'),
+            title: 'Available Challenge',
+          },
+        ],
+      ]);
 
       await getAvailableChallengesForRevival(userId);
 
       expect(mockConnection.execute).toHaveBeenCalledWith(
         expect.stringContaining("uc.status = 'assigned'"),
-        expect.arrayContaining([userId])
+        expect.arrayContaining([userId]),
       );
     });
 
@@ -360,19 +359,21 @@ describe('Challenge Validation Service', () => {
 
       expect(mockConnection.execute).toHaveBeenCalledWith(
         expect.stringContaining('c.is_active = 1'),
-        expect.any(Array)
+        expect.any(Array),
       );
     });
 
     it('should include habit name in results', async () => {
-      mockConnection.execute.mockResolvedValueOnce([[
-        {
-          id: Buffer.from('uc-1'),
-          challenge_id: Buffer.from('c-1'),
-          title: 'Test Challenge',
-          habit_name: 'My Habit'
-        }
-      ]]);
+      mockConnection.execute.mockResolvedValueOnce([
+        [
+          {
+            id: Buffer.from('uc-1'),
+            challenge_id: Buffer.from('c-1'),
+            title: 'Test Challenge',
+            habit_name: 'My Habit',
+          },
+        ],
+      ]);
 
       const result = await getAvailableChallengesForRevival(userId);
 
@@ -383,13 +384,15 @@ describe('Challenge Validation Service', () => {
       const ucId = '12345678-1234-1234-1234-123456789abc';
       const cId = '87654321-4321-4321-4321-cba987654321';
 
-      mockConnection.execute.mockResolvedValueOnce([[
-        {
-          id: Buffer.from(ucId.replace(/-/g, ''), 'hex'),
-          challenge_id: Buffer.from(cId.replace(/-/g, ''), 'hex'),
-          title: 'Test'
-        }
-      ]]);
+      mockConnection.execute.mockResolvedValueOnce([
+        [
+          {
+            id: Buffer.from(ucId.replace(/-/g, ''), 'hex'),
+            challenge_id: Buffer.from(cId.replace(/-/g, ''), 'hex'),
+            title: 'Test',
+          },
+        ],
+      ]);
 
       const result = await getAvailableChallengesForRevival(userId);
 

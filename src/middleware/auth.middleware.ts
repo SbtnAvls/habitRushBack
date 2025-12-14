@@ -2,7 +2,16 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { TokenBlacklistModel } from '../models/token-blacklist.model';
 
-export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+// Extended Request type with user information from JWT
+export interface AuthRequest extends Request {
+  user?: {
+    id: string;
+    iat?: number;
+    exp?: number;
+  };
+}
+
+export const authMiddleware = async (req: AuthRequest, res: Response, next: NextFunction) => {
   const token = req.headers.authorization?.split(' ')[1];
 
   if (!token) {
@@ -11,7 +20,11 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
 
   try {
     // Verify token signature and expiration
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret') as {
+      id: string;
+      iat?: number;
+      exp?: number;
+    };
 
     // Check if token is blacklisted
     const isBlacklisted = await TokenBlacklistModel.isBlacklisted(token);
@@ -19,9 +32,9 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
       return res.status(401).json({ message: 'Token has been revoked' });
     }
 
-    (req as any).user = decoded;
+    req.user = decoded;
     next();
-  } catch (error) {
+  } catch (_error) {
     return res.status(401).json({ message: 'Invalid token' });
   }
 };

@@ -163,9 +163,7 @@ describe('Auth Middleware', () => {
         authorization: `Bearer ${token}`,
       };
 
-      (TokenBlacklistModel.isBlacklisted as jest.Mock).mockRejectedValue(
-        new Error('Database error')
-      );
+      (TokenBlacklistModel.isBlacklisted as jest.Mock).mockRejectedValue(new Error('Database error'));
 
       await authMiddleware(req as Request, res as unknown as Response, next);
 

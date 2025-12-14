@@ -21,7 +21,7 @@ export async function calculateAndUpdateStreak(habitId: string, userId: string):
   // Actualizar la tabla HABITS con el nuevo streak
   await updateHabit(habitId, userId, {
     current_streak: currentStreak,
-    updated_at: new Date()
+    updated_at: new Date(),
   });
 
   return currentStreak;
@@ -33,7 +33,7 @@ export async function calculateAndUpdateStreak(habitId: string, userId: string):
 function calculateStreak(
   completions: HabitCompletionRecord[],
   frequencyType: 'daily' | 'weekly' | 'custom',
-  frequencyDaysOfWeek?: string
+  frequencyDaysOfWeek?: string,
 ): number {
   if (completions.length === 0) {
     return 0;
@@ -62,7 +62,7 @@ function calculateStreak(
   }
 
   let streak = 0;
-  let currentDate = new Date(today);
+  const currentDate = new Date(today);
 
   // Convertir las fechas completadas a un Set para búsqueda rápida
   const completedDateSet = new Set(completedDates.map(d => formatDate(new Date(d))));
@@ -72,8 +72,7 @@ function calculateStreak(
     const dateStr = formatDate(currentDate);
 
     // Si el hábito es diario o si es un día que debe completarse según la frecuencia
-    const shouldCheckThisDay = frequencyType === 'daily' ||
-      (targetDays && targetDays.includes(currentDate.getDay()));
+    const shouldCheckThisDay = frequencyType === 'daily' || (targetDays && targetDays.includes(currentDate.getDay()));
 
     if (shouldCheckThisDay) {
       if (completedDateSet.has(dateStr)) {

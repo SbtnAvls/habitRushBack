@@ -1,7 +1,7 @@
 import pool from '../db';
 import { v4 as uuidv4 } from 'uuid';
-import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, differenceInMonths, parseISO } from 'date-fns';
-import { PoolConnection } from 'mysql2/promise';
+import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
+import { PoolConnection, RowDataPacket } from 'mysql2/promise';
 
 export type LifeChallengeStatus = 'pending' | 'obtained' | 'redeemed';
 
@@ -23,32 +23,31 @@ export interface UserLifeChallengeStatus {
  * Cada función verifica si el usuario cumple con los requisitos específicos
  */
 const verificationFunctions: { [key: string]: (userId: string, connection: PoolConnection) => Promise<boolean> } = {
-
   // Mantén un hábito durante una semana completa sin perder vidas
   verifyWeekWithoutLosingLives: async (userId: string, connection: PoolConnection) => {
     const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
     const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
 
-    const [result] = await connection.execute<any[]>(
+    const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as lost_lives_count
        FROM LIFE_HISTORY
        WHERE user_id = UUID_TO_BIN(?)
        AND reason = 'habit_missed'
        AND created_at BETWEEN ? AND ?`,
-      [userId, format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd')]
+      [userId, format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd')],
     );
 
     // También verificar que haya al menos un hábito activo
-    const [habits] = await connection.execute<any[]>(
+    const [habits] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as habit_count
        FROM HABITS
        WHERE user_id = UUID_TO_BIN(?)
        AND is_active = 1
        AND start_date <= CURDATE()`,
-      [userId]
+      [userId],
     );
 
-    return result[0].lost_lives_count === 0 && habits[0].habit_count > 0;
+    return (result[0].lost_lives_count as number) === 0 && (habits[0].habit_count as number) > 0;
   },
 
   // Mantén un hábito durante un mes completo sin perder vidas
@@ -56,53 +55,53 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
     const monthStart = startOfMonth(new Date());
     const monthEnd = endOfMonth(new Date());
 
-    const [result] = await connection.execute<any[]>(
+    const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as lost_lives_count
        FROM LIFE_HISTORY
        WHERE user_id = UUID_TO_BIN(?)
        AND reason = 'habit_missed'
        AND created_at BETWEEN ? AND ?`,
-      [userId, format(monthStart, 'yyyy-MM-dd'), format(monthEnd, 'yyyy-MM-dd')]
+      [userId, format(monthStart, 'yyyy-MM-dd'), format(monthEnd, 'yyyy-MM-dd')],
     );
 
-    const [habits] = await connection.execute<any[]>(
+    const [habits] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as habit_count
        FROM HABITS
        WHERE user_id = UUID_TO_BIN(?)
        AND is_active = 1
        AND start_date <= DATE_SUB(CURDATE(), INTERVAL 30 DAY)`,
-      [userId]
+      [userId],
     );
 
-    return result[0].lost_lives_count === 0 && habits[0].habit_count > 0;
+    return (result[0].lost_lives_count as number) === 0 && (habits[0].habit_count as number) > 0;
   },
 
   // Completa un hábito faltando menos de 1 hora para acabar el día
   verifyLastHourSave: async (userId: string, connection: PoolConnection) => {
-    const [result] = await connection.execute<any[]>(
+    const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as late_completions
        FROM HABIT_COMPLETIONS
        WHERE user_id = UUID_TO_BIN(?)
        AND completed = 1
        AND TIME(completed_at) >= '23:00:00'`,
-      [userId]
+      [userId],
     );
 
-    return result[0].late_completions > 0;
+    return (result[0].late_completions as number) > 0;
   },
 
   // Registra progreso de un hábito antes de la 1 AM
   verifyEarlyBird: async (userId: string, connection: PoolConnection) => {
-    const [result] = await connection.execute<any[]>(
+    const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as early_completions
        FROM HABIT_COMPLETIONS
        WHERE user_id = UUID_TO_BIN(?)
        AND completed = 1
        AND TIME(completed_at) <= '01:00:00'`,
-      [userId]
+      [userId],
     );
 
-    return result[0].early_completions > 0;
+    return (result[0].early_completions as number) > 0;
   },
 
   // Completa al menos 3 hábitos durante una semana completa sin faltar
@@ -110,7 +109,7 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
     const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
     const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
 
-    const [result] = await connection.execute<any[]>(
+    const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(DISTINCT h.id) as completed_habits
        FROM HABITS h
        WHERE h.user_id = UUID_TO_BIN(?)
@@ -131,15 +130,15 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
          )
          AND dates.check_date BETWEEN ? AND ?
        )`,
-      [userId, format(weekStart, 'yyyy-MM-dd'), format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd')]
+      [userId, format(weekStart, 'yyyy-MM-dd'), format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd')],
     );
 
-    return result[0].completed_habits >= 3;
+    return (result[0].completed_habits as number) >= 3;
   },
 
   // Completa un hábito llegando a su fecha objetivo (mínimo 4 meses)
   verifyTargetDateReached: async (userId: string, connection: PoolConnection) => {
-    const [result] = await connection.execute<any[]>(
+    const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as target_reached
        FROM HABITS h
        WHERE h.user_id = UUID_TO_BIN(?)
@@ -152,45 +151,45 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
          AND hc.date = h.target_date
          AND hc.completed = 1
        )`,
-      [userId]
+      [userId],
     );
 
-    return result[0].target_reached > 0;
+    return (result[0].target_reached as number) > 0;
   },
 
   // Completa 5 retos redimibles solo una vez
   verifyFiveOnceChallenges: async (userId: string, connection: PoolConnection) => {
-    const [result] = await connection.execute<any[]>(
+    const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(DISTINCT lcr.life_challenge_id) as redeemed_once_challenges
        FROM LIFE_CHALLENGE_REDEMPTIONS lcr
        JOIN LIFE_CHALLENGES lc ON lcr.life_challenge_id = lc.id
        WHERE lcr.user_id = UUID_TO_BIN(?)
        AND lc.redeemable_type = 'once'`,
-      [userId]
+      [userId],
     );
 
-    return result[0].redeemed_once_challenges >= 5;
+    return (result[0].redeemed_once_challenges as number) >= 5;
   },
 
   // No te quedes sin vidas durante 2 meses seguidos
   verifyTwoMonthsAlive: async (userId: string, connection: PoolConnection) => {
     const twoMonthsAgo = subDays(new Date(), 60);
 
-    const [result] = await connection.execute<any[]>(
+    const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as zero_lives_moments
        FROM LIFE_HISTORY
        WHERE user_id = UUID_TO_BIN(?)
        AND current_lives = 0
        AND created_at >= ?`,
-      [userId, format(twoMonthsAgo, 'yyyy-MM-dd')]
+      [userId, format(twoMonthsAgo, 'yyyy-MM-dd')],
     );
 
-    return result[0].zero_lives_moments === 0;
+    return (result[0].zero_lives_moments as number) === 0;
   },
 
   // Acumula 1000 horas en un hábito
   verify1000Hours: async (userId: string, connection: PoolConnection) => {
-    const [result] = await connection.execute<any[]>(
+    const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT SUM(hc.progress_value) as total_minutes
        FROM HABIT_COMPLETIONS hc
        JOIN HABITS h ON hc.habit_id = h.id
@@ -200,27 +199,29 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
        GROUP BY h.id
        ORDER BY total_minutes DESC
        LIMIT 1`,
-      [userId]
+      [userId],
     );
 
-    if (result.length === 0) return false;
-    const totalHours = (result[0].total_minutes || 0) / 60;
+    if (result.length === 0) {
+      return false;
+    }
+    const totalHours = ((result[0].total_minutes as number) || 0) / 60;
     return totalHours >= 1000;
   },
 
   // Escribe 200 notas entre todos tus hábitos
   verify200Notes: async (userId: string, connection: PoolConnection) => {
-    const [result] = await connection.execute<any[]>(
+    const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as notes_count
        FROM HABIT_COMPLETIONS
        WHERE user_id = UUID_TO_BIN(?)
        AND notes IS NOT NULL
        AND notes != ''`,
-      [userId]
+      [userId],
     );
 
-    return result[0].notes_count >= 200;
-  }
+    return (result[0].notes_count as number) >= 200;
+  },
 };
 
 /**
@@ -232,8 +233,8 @@ export async function evaluateLifeChallenges(userId: string): Promise<UserLifeCh
 
   try {
     // 1. Obtener todos los Life Challenges activos
-    const [lifeChallenges] = await connection.execute<any[]>(
-      `SELECT * FROM LIFE_CHALLENGES WHERE is_active = 1`
+    const [lifeChallenges] = await connection.execute<RowDataPacket[]>(
+      'SELECT * FROM LIFE_CHALLENGES WHERE is_active = 1',
     );
 
     const userStatuses: UserLifeChallengeStatus[] = [];
@@ -244,13 +245,13 @@ export async function evaluateLifeChallenges(userId: string): Promise<UserLifeCh
         : challenge.id;
 
       // 2. Verificar si ya fue redimido (para challenges 'once')
-      const [redemptions] = await connection.execute<any[]>(
+      const [redemptions] = await connection.execute<RowDataPacket[]>(
         `SELECT * FROM LIFE_CHALLENGE_REDEMPTIONS
          WHERE user_id = UUID_TO_BIN(?)
          AND life_challenge_id = UUID_TO_BIN(?)
          ORDER BY redeemed_at DESC
          LIMIT 1`,
-        [userId, challengeId]
+        [userId, challengeId],
       );
 
       const wasRedeemed = redemptions.length > 0;
@@ -263,8 +264,8 @@ export async function evaluateLifeChallenges(userId: string): Promise<UserLifeCh
       if (verificationFunc) {
         try {
           isCurrentlyEligible = await verificationFunc(userId, connection);
-        } catch (error) {
-          console.error(`Error evaluating ${challenge.verification_function}:`, error);
+        } catch (_error) {
+          // Skip evaluation error for this challenge
         }
       }
 
@@ -283,7 +284,8 @@ export async function evaluateLifeChallenges(userId: string): Promise<UserLifeCh
           status = 'pending';
           canRedeem = false;
         }
-      } else { // unlimited
+      } else {
+        // unlimited
         if (wasRedeemed && !isCurrentlyEligible) {
           status = 'redeemed';
           canRedeem = false;
@@ -306,12 +308,11 @@ export async function evaluateLifeChallenges(userId: string): Promise<UserLifeCh
         status,
         obtained_at: isCurrentlyEligible ? new Date() : undefined,
         redeemed_at: lastRedemption?.redeemed_at,
-        can_redeem: canRedeem
+        can_redeem: canRedeem,
       });
     }
 
     return userStatuses;
-
   } finally {
     connection.release();
   }
@@ -331,7 +332,7 @@ export async function getUserLifeChallengeStatuses(userId: string): Promise<User
  */
 export async function redeemLifeChallengeWithValidation(
   userId: string,
-  lifeChallengeId: string
+  lifeChallengeId: string,
 ): Promise<{ success: boolean; message: string; livesGained?: number }> {
   const connection = await pool.getConnection();
 
@@ -346,7 +347,7 @@ export async function redeemLifeChallengeWithValidation(
       await connection.rollback();
       return {
         success: false,
-        message: 'Life Challenge no encontrado'
+        message: 'Life Challenge no encontrado',
       };
     }
 
@@ -354,16 +355,17 @@ export async function redeemLifeChallengeWithValidation(
       await connection.rollback();
       return {
         success: false,
-        message: challengeStatus.status === 'redeemed'
-          ? 'Este challenge ya fue redimido'
-          : 'Aún no cumples los requisitos para redimir este challenge'
+        message:
+          challengeStatus.status === 'redeemed'
+            ? 'Este challenge ya fue redimido'
+            : 'Aún no cumples los requisitos para redimir este challenge',
       };
     }
 
     // 2. Obtener información del usuario
-    const [users] = await connection.execute<any[]>(
-      `SELECT lives, max_lives FROM USERS WHERE id = UUID_TO_BIN(?)`,
-      [userId]
+    const [users] = await connection.execute<RowDataPacket[]>(
+      'SELECT lives, max_lives FROM USERS WHERE id = UUID_TO_BIN(?)',
+      [userId],
     );
 
     const currentLives = users[0].lives;
@@ -375,15 +377,12 @@ export async function redeemLifeChallengeWithValidation(
       await connection.rollback();
       return {
         success: false,
-        message: 'Ya tienes el máximo de vidas posibles'
+        message: 'Ya tienes el máximo de vidas posibles',
       };
     }
 
     // 3. Actualizar vidas del usuario
-    await connection.execute(
-      `UPDATE USERS SET lives = ? WHERE id = UUID_TO_BIN(?)`,
-      [newLives, userId]
-    );
+    await connection.execute('UPDATE USERS SET lives = ? WHERE id = UUID_TO_BIN(?)', [newLives, userId]);
 
     // 4. Registrar la redención
     const redemptionId = uuidv4();
@@ -391,7 +390,7 @@ export async function redeemLifeChallengeWithValidation(
       `INSERT INTO LIFE_CHALLENGE_REDEMPTIONS
        (id, user_id, life_challenge_id, lives_gained, redeemed_at)
        VALUES (UUID_TO_BIN(?), UUID_TO_BIN(?), UUID_TO_BIN(?), ?, NOW())`,
-      [redemptionId, userId, lifeChallengeId, actualLivesGained]
+      [redemptionId, userId, lifeChallengeId, actualLivesGained],
     );
 
     // 5. Registrar en LIFE_HISTORY
@@ -400,7 +399,7 @@ export async function redeemLifeChallengeWithValidation(
       `INSERT INTO LIFE_HISTORY
        (id, user_id, lives_change, current_lives, reason, related_life_challenge_id, created_at)
        VALUES (UUID_TO_BIN(?), UUID_TO_BIN(?), ?, ?, ?, UUID_TO_BIN(?), NOW())`,
-      [historyId, userId, actualLivesGained, newLives, 'life_challenge_redeemed', lifeChallengeId]
+      [historyId, userId, actualLivesGained, newLives, 'life_challenge_redeemed', lifeChallengeId],
     );
 
     await connection.commit();
@@ -408,12 +407,10 @@ export async function redeemLifeChallengeWithValidation(
     return {
       success: true,
       message: `¡Challenge redimido! Has ganado ${actualLivesGained} vida(s)`,
-      livesGained: actualLivesGained
+      livesGained: actualLivesGained,
     };
-
   } catch (error) {
     await connection.rollback();
-    console.error('Error redeeming life challenge:', error);
     throw error;
   } finally {
     connection.release();
