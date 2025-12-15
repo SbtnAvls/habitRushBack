@@ -5,7 +5,7 @@ import { RowDataPacket, ResultSetHeader } from 'mysql2';
 export interface UserChallenge {
   id: string;
   user_id: string;
-  habit_id: string;
+  habit_id: string | null;
   challenge_id: string;
   status: 'assigned' | 'completed' | 'expired' | 'discarded';
   assigned_at: Date;
@@ -46,16 +46,23 @@ export class UserChallengeModel {
     return rows as unknown as UserChallengeWithDetails[];
   }
 
-  static async assign(userId: string, challengeId: string, habitId: string): Promise<UserChallenge> {
+  static async assign(userId: string, challengeId: string, habitId?: string | null): Promise<UserChallenge> {
     const id = uuidv4();
     await pool.query('INSERT INTO USER_CHALLENGES (id, user_id, challenge_id, habit_id) VALUES (?, ?, ?, ?)', [
       id,
       userId,
       challengeId,
-      habitId,
+      habitId || null,
     ]);
     const [rows] = await pool.query<RowDataPacket[]>('SELECT * FROM USER_CHALLENGES WHERE id = ?', [id]);
     return mapUserChallenge(rows[0]);
+  }
+
+  /**
+   * Assign a general challenge (for revival - no habit associated)
+   */
+  static async assignGeneral(userId: string, challengeId: string): Promise<UserChallenge> {
+    return this.assign(userId, challengeId, null);
   }
 
   static async updateStatus(

@@ -1,8 +1,15 @@
 import { RowDataPacket } from 'mysql2';
 import { v4 as uuidv4 } from 'uuid';
 import pool from '../db';
+import { PoolConnection } from 'mysql2/promise';
 
-export type LifeHistoryReason = 'habit_missed' | 'challenge_completed' | 'life_challenge_redeemed';
+export type LifeHistoryReason =
+  | 'habit_missed'
+  | 'challenge_completed'
+  | 'life_challenge_redeemed'
+  | 'pending_expired'
+  | 'revival_reset'
+  | 'revival_challenge';
 
 export interface LifeHistory extends RowDataPacket {
   id: string;
@@ -31,9 +38,11 @@ export class LifeHistoryModel {
     currentLives: number,
     reason: LifeHistoryReason,
     relatedId?: { habitId?: string; userChallengeId?: string; lifeChallengeId?: string },
+    connection?: PoolConnection,
   ): Promise<LifeHistory> {
+    const conn = connection || pool;
     const id = uuidv4();
-    await pool.query(
+    await conn.query(
       `INSERT INTO LIFE_HISTORY 
         (id, user_id, lives_change, current_lives, reason, related_habit_id, related_user_challenge_id, related_life_challenge_id) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,

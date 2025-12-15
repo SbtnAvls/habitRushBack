@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { HabitCompletion, HabitCompletionRecord } from '../models/habit-completion.model';
 import { CompletionImage } from '../models/completion-image.model';
+import { PendingRedemptionModel } from '../models/pending-redemption.model';
 import { evaluateLifeChallenges } from '../services/life-challenge-evaluation.service';
 import { calculateAndUpdateStreak } from '../services/streak-calculation.service';
 import { AuthRequest } from '../middleware/auth.middleware';
@@ -26,6 +27,16 @@ export class HabitCompletionController {
       const userId = req.user?.id;
       if (!userId) {
         return res.status(401).json({ message: 'Not authenticated' });
+      }
+
+      // Check if habit has an active pending redemption (blocked)
+      const hasPending = await PendingRedemptionModel.hasActivePending(habitId, userId);
+      if (hasPending) {
+        return res.status(403).json({
+          message:
+            'Este hábito está bloqueado porque tienes una redención pendiente. Debes decidir si perder una vida o completar un challenge antes de poder registrar progreso.',
+          error_code: 'HABIT_BLOCKED_PENDING_REDEMPTION',
+        });
       }
 
       const { date, completed, progress_type } = req.body;

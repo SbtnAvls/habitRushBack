@@ -1,4 +1,10 @@
-import { evaluateAllUsersDailyHabits } from './habit-evaluation.service';
+import {
+  evaluateAllUsersDailyHabits,
+  evaluateAllUsersWithPendingRedemptions,
+  processExpiredPendingRedemptions,
+  notifyExpiringRedemptions,
+  PendingRedemptionResult,
+} from './habit-evaluation.service';
 import { format } from 'date-fns';
 
 /**
@@ -122,6 +128,131 @@ export class DailyEvaluationService {
 
     // Retornar un timeout vacío para mantener consistencia
     return setTimeout(() => {}, 0);
+  }
+
+  // ============================================================================
+  // NEW PENDING REDEMPTION SYSTEM METHODS
+  // ============================================================================
+
+  /**
+   * Runs the new evaluation system with pending redemptions
+   * 1. First processes expired pending redemptions (from previous days)
+   * 2. Then creates new pending redemptions for missed habits
+   */
+  async runDailyEvaluationWithPendingRedemptions(): Promise<void> {
+    if (this.isRunning) {
+      console.warn('[DailyEvaluation] Already running, skipping...');
+      return;
+    }
+
+    const today = format(new Date(), 'yyyy-MM-dd');
+
+    if (this.lastExecutionDate === today) {
+      console.warn(`[DailyEvaluation] Already executed today (${today}), skipping...`);
+      return;
+    }
+
+    try {
+      this.isRunning = true;
+      console.warn(`[DailyEvaluation] Starting daily evaluation for ${today}`);
+
+      const startTime = Date.now();
+
+      // Step 1: Process expired pending redemptions (user didn't decide yesterday)
+      console.warn('[DailyEvaluation] Step 1: Processing expired pending redemptions...');
+      const expiredCount = await processExpiredPendingRedemptions();
+      if (expiredCount > 0) {
+        console.warn(`[DailyEvaluation] Processed ${expiredCount} expired pending redemptions`);
+      }
+
+      // Step 2: Evaluate missed habits and create new pending redemptions
+      console.warn('[DailyEvaluation] Step 2: Evaluating missed habits...');
+      const results = await evaluateAllUsersWithPendingRedemptions();
+      const endTime = Date.now();
+
+      // Calculate statistics
+      const totalUsers = results.length;
+      const usersWithMissedHabits = results.filter((r: PendingRedemptionResult) => r.missed_habits.length > 0).length;
+      const totalPendingCreated = results.reduce(
+        (sum: number, r: PendingRedemptionResult) => sum + r.pending_redemptions_created,
+        0,
+      );
+
+      console.warn(`[DailyEvaluation] Completed in ${endTime - startTime}ms`);
+      console.warn(
+        `[DailyEvaluation] Stats: users=${totalUsers}, missed=${usersWithMissedHabits}, pendingCreated=${totalPendingCreated}`,
+      );
+
+      this.lastExecutionDate = today;
+    } catch (error) {
+      console.error('[DailyEvaluation] Error during daily evaluation:', error);
+      throw error;
+    } finally {
+      this.isRunning = false;
+    }
+  }
+
+  /**
+   * Start the new pending redemption system
+   * Runs daily evaluation at 00:05
+   * Also runs hourly notifications for expiring redemptions
+   */
+  startWithPendingRedemptions(): void {
+    const timeUntilNext = DailyEvaluationService.getTimeUntilNextExecution();
+
+    console.warn(`[DailyEvaluation] Scheduling daily evaluation in ${Math.round(timeUntilNext / 1000 / 60)} minutes`);
+
+    setTimeout(() => {
+      this.runDailyEvaluationWithPendingRedemptions().catch(error => {
+        console.error('[DailyEvaluation] Error in first scheduled evaluation:', error);
+      });
+
+      // Then run every 24 hours
+      setInterval(
+        () => {
+          this.runDailyEvaluationWithPendingRedemptions().catch(error => {
+            console.error('[DailyEvaluation] Error in scheduled evaluation:', error);
+          });
+        },
+        24 * 60 * 60 * 1000,
+      );
+    }, timeUntilNext);
+
+    // Start hourly notification job for expiring redemptions
+    this.startHourlyNotifications();
+  }
+
+  /**
+   * Start hourly notifications for pending redemptions about to expire
+   * Notifies users 3 hours before expiration
+   */
+  startHourlyNotifications(): void {
+    console.warn('[DailyEvaluation] Starting hourly notification job for expiring redemptions');
+
+    // Run immediately on startup
+    this.runExpiringNotifications();
+
+    // Then run every hour
+    setInterval(
+      () => {
+        this.runExpiringNotifications();
+      },
+      60 * 60 * 1000,
+    ); // Every hour
+  }
+
+  /**
+   * Send notifications for pending redemptions about to expire
+   */
+  private async runExpiringNotifications(): Promise<void> {
+    try {
+      const notifiedCount = await notifyExpiringRedemptions(3); // 3 hours before expiry
+      if (notifiedCount > 0) {
+        console.warn(`[DailyEvaluation] Sent ${notifiedCount} expiring redemption notifications`);
+      }
+    } catch (error) {
+      console.error('[DailyEvaluation] Error sending expiring notifications:', error);
+    }
   }
 }
 

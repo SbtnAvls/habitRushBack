@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { ChallengeModel } from '../models/challenge.model';
 import { UserChallengeModel } from '../models/user-challenge.model';
+import { HabitCategoryModel } from '../models/habit-category.model';
 import { findHabitById } from '../models/habit.model';
 import { AuthRequest } from '../middleware/auth.middleware';
 
@@ -83,6 +84,53 @@ export class ChallengeController {
       res.json(updatedChallenge);
     } catch (_error) {
       res.status(500).json({ message: 'Error updating user challenge status' });
+    }
+  }
+
+  /**
+   * GET /challenges/by-category/:categoryId
+   * Get challenges specific to a category (for pending redemptions)
+   */
+  static async getByCategory(req: AuthRequest, res: Response) {
+    try {
+      const { categoryId } = req.params;
+
+      // Verify category exists
+      const category = await HabitCategoryModel.findById(categoryId);
+      if (!category) {
+        return res.status(404).json({ message: 'Categoría no encontrada' });
+      }
+
+      const challenges = await ChallengeModel.getByCategory(categoryId);
+
+      res.json({
+        success: true,
+        category,
+        challenges,
+        count: challenges.length,
+      });
+    } catch (error) {
+      console.error('Error getting challenges by category:', error);
+      res.status(500).json({ message: 'Error al obtener challenges por categoría' });
+    }
+  }
+
+  /**
+   * GET /challenges/general
+   * Get general challenges (for revival penance)
+   */
+  static async getGeneralChallenges(_req: Request, res: Response) {
+    try {
+      const challenges = await ChallengeModel.getGeneralChallenges();
+
+      res.json({
+        success: true,
+        challenges,
+        count: challenges.length,
+      });
+    } catch (error) {
+      console.error('Error getting general challenges:', error);
+      res.status(500).json({ message: 'Error al obtener challenges generales' });
     }
   }
 }

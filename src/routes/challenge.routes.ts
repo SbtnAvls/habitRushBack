@@ -11,6 +11,12 @@ router.use(authMiddleware);
 // GET /api/challenges - Get all available challenges
 router.get('/', ChallengeController.getAllAvailable);
 
+// GET /api/challenges/general - Get general challenges (for revival)
+router.get('/general', ChallengeController.getGeneralChallenges);
+
+// GET /api/challenges/by-category/:categoryId - Get challenges by category
+router.get('/by-category/:categoryId', ChallengeController.getByCategory);
+
 // GET /api/challenges/available-for-revival - Get challenges available for users without lives
 router.get('/available-for-revival', getAvailableForRevival);
 

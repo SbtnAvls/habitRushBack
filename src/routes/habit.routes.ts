@@ -1,6 +1,7 @@
 import express, { Router } from 'express';
 import * as habitController from '../controllers/habit.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
+import { aliveMiddleware } from '../middleware/alive.middleware';
 
 import habitCompletionRoutes from './habit-completion.routes';
 
@@ -17,8 +18,8 @@ router.get('/', habitController.getAllHabits);
 // Get a single habit by ID
 router.get('/:id', habitController.getHabitById);
 
-// Create a new habit
-router.post('/', habitController.createHabit);
+// Create a new habit (user must be alive)
+router.post('/', aliveMiddleware, habitController.createHabit);
 
 // Update a habit
 router.put('/:id', habitController.updateHabit);

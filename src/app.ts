@@ -7,6 +7,9 @@ import imageRoutes from './routes/image.routes';
 import lifeChallengeRoutes from './routes/life-challenge.routes';
 import leagueRoutes from './routes/league.routes';
 import notificationRoutes from './routes/notification.routes';
+import pendingRedemptionRoutes from './routes/pending-redemption.routes';
+import revivalRoutes from './routes/revival.routes';
+import categoryRoutes from './routes/category.routes';
 import { dailyEvaluationService } from './services/daily-evaluation.service';
 import { setupSwagger } from './swagger';
 
@@ -31,6 +34,9 @@ app.use('/images', imageRoutes);
 app.use('/life-challenges', lifeChallengeRoutes);
 app.use('/leagues', leagueRoutes);
 app.use('/notifications', notificationRoutes);
+app.use('/pending-redemptions', pendingRedemptionRoutes);
+app.use('/revival', revivalRoutes);
+app.use('/categories', categoryRoutes);
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Welcome to HabitRush API!');
@@ -41,14 +47,15 @@ app.listen(port, () => {
 
   // Iniciar el servicio de evaluación diaria de hábitos
   // Se ejecutará todos los días a las 00:05 para evaluar los hábitos del día anterior
+  // Usa el sistema nuevo con pending redemptions (período de gracia de 24h)
   if (process.env.NODE_ENV !== 'test') {
-    console.warn('Starting daily evaluation service...');
-    dailyEvaluationService.startDailyAt0005();
+    console.warn('Starting daily evaluation service with pending redemptions...');
+    dailyEvaluationService.startWithPendingRedemptions();
 
     // Opcional: Ejecutar inmediatamente en desarrollo para pruebas
     if (process.env.NODE_ENV === 'development') {
       console.warn('Running immediate evaluation for development testing...');
-      dailyEvaluationService.runDailyEvaluation().catch(error => {
+      dailyEvaluationService.runDailyEvaluationWithPendingRedemptions().catch(error => {
         console.error('Error in immediate daily evaluation:', error);
       });
     }

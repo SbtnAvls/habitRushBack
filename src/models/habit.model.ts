@@ -7,6 +7,7 @@ export interface Habit {
   user_id: string;
   name: string;
   description?: string;
+  category_id: string;
   start_date: Date;
   target_date?: Date;
   current_streak: number;

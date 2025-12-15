@@ -176,17 +176,18 @@ describe('Challenge Validation Service', () => {
 
     it('should create life history entry after successful validation', async () => {
       mockConnection.execute
-        .mockResolvedValueOnce([[{ id: Buffer.from('uc-123') }]])
+        .mockResolvedValueOnce([[{ id: Buffer.from('uc-123'), title: 'Test', description: 'Test' }]])
         .mockResolvedValueOnce([[{ lives: 0 }]])
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]);
+        .mockResolvedValueOnce([]) // INSERT CHALLENGE_PROOFS
+        .mockResolvedValueOnce([]) // UPDATE CHALLENGE_PROOFS
+        .mockResolvedValueOnce([]) // UPDATE USER_CHALLENGES
+        .mockResolvedValueOnce([]); // INSERT LIFE_HISTORY
 
       (habitEvaluationService.reviveUser as jest.Mock).mockResolvedValue(undefined);
 
-      await submitChallengeProof(userId, userChallengeId, 'Valid proof text');
+      await submitChallengeProof(userId, userChallengeId, 'Valid proof text with enough characters to pass validation');
 
+      // The actual query uses UUID_TO_BIN(?) for the IDs
       expect(mockConnection.execute).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO LIFE_HISTORY'),
         expect.arrayContaining([expect.any(String), userId, 0, 0, 'challenge_completed', userChallengeId]),
@@ -291,11 +292,12 @@ describe('Challenge Validation Service', () => {
     const userId = 'user-123';
 
     it('should return assigned challenges for user without lives', async () => {
+      // Mock data must use field names from the SQL query: uc.id as user_challenge_id, c.id as challenge_id
       mockConnection.execute.mockResolvedValueOnce([
         [
           {
-            id: Buffer.from('uc-1'),
-            challenge_id: Buffer.from('c-1'),
+            user_challenge_id: Buffer.from('12345678123412341234123456789abc', 'hex'),
+            challenge_id: Buffer.from('abcdef12abcd1234abcd1234abcdef12', 'hex'),
             title: 'Challenge 1',
             description: 'Description 1',
             difficulty: 'easy',
@@ -305,8 +307,8 @@ describe('Challenge Validation Service', () => {
             assigned_at: new Date(),
           },
           {
-            id: Buffer.from('uc-2'),
-            challenge_id: Buffer.from('c-2'),
+            user_challenge_id: Buffer.from('22345678123412341234123456789abc', 'hex'),
+            challenge_id: Buffer.from('bbcdef12abcd1234abcd1234abcdef12', 'hex'),
             title: 'Challenge 2',
             description: 'Description 2',
             difficulty: 'medium',
@@ -337,9 +339,15 @@ describe('Challenge Validation Service', () => {
       mockConnection.execute.mockResolvedValueOnce([
         [
           {
-            id: Buffer.from('uc-1'),
-            challenge_id: Buffer.from('c-1'),
+            user_challenge_id: Buffer.from('12345678123412341234123456789abc', 'hex'),
+            challenge_id: Buffer.from('abcdef12abcd1234abcd1234abcdef12', 'hex'),
             title: 'Available Challenge',
+            description: 'Test',
+            difficulty: 'easy',
+            type: 'exercise',
+            estimated_time: 30,
+            habit_name: 'Test Habit',
+            assigned_at: new Date(),
           },
         ],
       ]);
@@ -367,10 +375,15 @@ describe('Challenge Validation Service', () => {
       mockConnection.execute.mockResolvedValueOnce([
         [
           {
-            id: Buffer.from('uc-1'),
-            challenge_id: Buffer.from('c-1'),
+            user_challenge_id: Buffer.from('12345678123412341234123456789abc', 'hex'),
+            challenge_id: Buffer.from('abcdef12abcd1234abcd1234abcdef12', 'hex'),
             title: 'Test Challenge',
+            description: 'Test',
+            difficulty: 'easy',
+            type: 'exercise',
+            estimated_time: 30,
             habit_name: 'My Habit',
+            assigned_at: new Date(),
           },
         ],
       ]);
@@ -387,9 +400,15 @@ describe('Challenge Validation Service', () => {
       mockConnection.execute.mockResolvedValueOnce([
         [
           {
-            id: Buffer.from(ucId.replace(/-/g, ''), 'hex'),
+            user_challenge_id: Buffer.from(ucId.replace(/-/g, ''), 'hex'),
             challenge_id: Buffer.from(cId.replace(/-/g, ''), 'hex'),
             title: 'Test',
+            description: 'Test',
+            difficulty: 'easy',
+            type: 'exercise',
+            estimated_time: 30,
+            habit_name: 'Test Habit',
+            assigned_at: new Date(),
           },
         ],
       ]);

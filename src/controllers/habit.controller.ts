@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import * as habitModel from '../models/habit.model';
+import { PendingRedemptionModel } from '../models/pending-redemption.model';
 import { deactivateHabitManually } from '../services/habit-evaluation.service';
 import { AuthRequest } from '../middleware/auth.middleware';
 
@@ -14,7 +15,16 @@ export const getAllHabits = async (req: AuthRequest, res: Response) => {
   }
   try {
     const habits = await habitModel.findHabitsByUserId(userId);
-    res.json(habits);
+
+    // Add is_blocked field to each habit (checks for active pending redemptions)
+    const habitsWithBlocked = await Promise.all(
+      habits.map(async habit => {
+        const isBlocked = await PendingRedemptionModel.hasActivePending(habit.id, userId);
+        return { ...habit, is_blocked: isBlocked };
+      }),
+    );
+
+    res.json(habitsWithBlocked);
   } catch (_error) {
     res.status(500).json({ message: 'Server error' });
   }
@@ -32,7 +42,10 @@ export const getHabitById = async (req: AuthRequest, res: Response) => {
     if (!habit) {
       return res.status(404).json({ message: 'Habit not found' });
     }
-    res.json(habit);
+
+    // Add is_blocked field (checks for active pending redemption)
+    const isBlocked = await PendingRedemptionModel.hasActivePending(id, userId);
+    res.json({ ...habit, is_blocked: isBlocked });
   } catch (_error) {
     res.status(500).json({ message: 'Server error' });
   }
@@ -44,7 +57,8 @@ export const createHabit = async (req: AuthRequest, res: Response) => {
   if (!userId) {
     return res.status(401).json({ message: 'Not authenticated' });
   }
-  const { name, description, target_date, frequency_type, frequency_days_of_week, progress_type } = req.body;
+  const { name, description, category_id, target_date, frequency_type, frequency_days_of_week, progress_type } =
+    req.body;
 
   try {
     if (!name || !frequency_type || !progress_type) {
@@ -63,6 +77,7 @@ export const createHabit = async (req: AuthRequest, res: Response) => {
       user_id: userId,
       name,
       description,
+      category_id: category_id || 'health',
       start_date: new Date(),
       target_date,
       current_streak: 0,

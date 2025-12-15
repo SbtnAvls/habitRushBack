@@ -19,7 +19,10 @@ export const getMe = async (req: AuthRequest, res: Response) => {
     }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password_hash, ...userWithoutPassword } = user;
-    res.json(userWithoutPassword);
+    res.json({
+      ...userWithoutPassword,
+      is_dead: user.lives === 0,
+    });
   } catch (_error) {
     res.status(500).json({ message: 'Server error' });
   }

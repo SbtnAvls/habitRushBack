@@ -384,6 +384,18 @@ export async function redeemLifeChallengeWithValidation(
     // 3. Actualizar vidas del usuario
     await connection.execute('UPDATE USERS SET lives = ? WHERE id = UUID_TO_BIN(?)', [newLives, userId]);
 
+    // 3.5. If user was dead (0 lives) and now has lives, reactivate habits
+    if (currentLives === 0 && newLives > 0) {
+      await connection.execute(
+        `UPDATE HABITS
+         SET is_active = 1, disabled_reason = NULL
+         WHERE user_id = UUID_TO_BIN(?)
+         AND disabled_reason = 'no_lives'
+         AND deleted_at IS NULL`,
+        [userId],
+      );
+    }
+
     // 4. Registrar la redención
     const redemptionId = uuidv4();
     await connection.execute(

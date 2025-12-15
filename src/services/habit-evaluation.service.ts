@@ -1,7 +1,12 @@
 import pool from '../db';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
+import { PoolConnection } from 'mysql2/promise';
 import { format, subDays } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
+import { PendingRedemptionModel } from '../models/pending-redemption.model';
+import { NotificationModel } from '../models/notification.model';
+import { LifeHistoryModel } from '../models/life-history.model';
+import { onPendingExpired } from './stats.service';
 
 export interface HabitEvaluationResult {
   user_id: string;
@@ -323,4 +328,332 @@ export async function deactivateHabitManually(habitId: string, userId: string): 
   } finally {
     connection.release();
   }
+}
+
+// ============================================================================
+// NEW PENDING REDEMPTION SYSTEM
+// ============================================================================
+
+export interface PendingRedemptionResult {
+  user_id: string;
+  date: string;
+  missed_habits: string[];
+  pending_redemptions_created: number;
+}
+
+/**
+ * Evaluates missed habits for a user and creates pending redemptions (24h grace period)
+ * instead of immediately deducting lives.
+ * Uses CHAR(36) UUID format consistent with the database schema.
+ */
+export async function evaluateMissedHabitsWithPendingRedemptions(
+  userId: string,
+  evaluationDate: Date = new Date(),
+): Promise<PendingRedemptionResult> {
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const dateStr = format(evaluationDate, 'yyyy-MM-dd');
+    const dayOfWeek = evaluationDate.getDay();
+
+    // 1. Get all active habits for the user scheduled for this day
+    const [habits] = await connection.query<RowDataPacket[]>(
+      `SELECT id, name, frequency_type, frequency_days_of_week
+       FROM HABITS
+       WHERE user_id = ?
+       AND is_active = 1
+       AND active_by_user = 1
+       AND start_date <= ?
+       AND (target_date IS NULL OR target_date >= ?)
+       AND deleted_at IS NULL`,
+      [userId, dateStr, dateStr],
+    );
+
+    const missedHabitIds: string[] = [];
+    const missedHabitNames: Map<string, string> = new Map();
+
+    // Filter habits scheduled for today
+    for (const habit of habits) {
+      let isScheduledForToday = false;
+
+      if (habit.frequency_type === 'daily') {
+        isScheduledForToday = true;
+      } else if (habit.frequency_type === 'weekly' && habit.frequency_days_of_week) {
+        const days = habit.frequency_days_of_week.split(',').map(Number);
+        isScheduledForToday = days.includes(dayOfWeek);
+      }
+
+      if (!isScheduledForToday) continue;
+
+      // 2. Check if the habit was completed
+      const [completions] = await connection.query<RowDataPacket[]>(
+        `SELECT completed FROM HABIT_COMPLETIONS
+         WHERE habit_id = ? AND user_id = ? AND date = ?`,
+        [habit.id, userId, dateStr],
+      );
+
+      // If no record or not completed
+      if (completions.length === 0 || completions[0].completed === 0) {
+        missedHabitIds.push(habit.id);
+        missedHabitNames.set(habit.id, habit.name);
+      }
+    }
+
+    if (missedHabitIds.length === 0) {
+      await connection.commit();
+      return {
+        user_id: userId,
+        date: dateStr,
+        missed_habits: [],
+        pending_redemptions_created: 0,
+      };
+    }
+
+    // 3. Create pending redemptions for each missed habit
+    // (only if the habit doesn't already have an active pending - was blocked)
+    let pendingCreated = 0;
+    for (const habitId of missedHabitIds) {
+      // Check if habit already has an active pending (was blocked, user couldn't complete it)
+      // Both 'pending' and 'challenge_assigned' mean the habit is blocked
+      const [activePending] = await connection.query<RowDataPacket[]>(
+        `SELECT id FROM PENDING_REDEMPTIONS
+         WHERE user_id = ? AND habit_id = ? AND status IN ('pending', 'challenge_assigned')`,
+        [userId, habitId],
+      );
+
+      // If habit was blocked (has active pending), skip creating another one
+      if (activePending.length > 0) {
+        continue;
+      }
+
+      // Check if a pending redemption already exists for this specific date
+      const [existingForDate] = await connection.query<RowDataPacket[]>(
+        `SELECT id FROM PENDING_REDEMPTIONS
+         WHERE user_id = ? AND habit_id = ? AND failed_date = ?`,
+        [userId, habitId, dateStr],
+      );
+
+      if (existingForDate.length === 0) {
+        // Create pending redemption
+        await PendingRedemptionModel.create(userId, habitId, evaluationDate, connection);
+        pendingCreated++;
+
+        // Create notification
+        const habitName = missedHabitNames.get(habitId) || 'tu h\u00e1bito';
+        await NotificationModel.create(
+          {
+            user_id: userId,
+            type: 'pending_redemption',
+            title: 'H\u00e1bito fallado',
+            message: `Fallaste "${habitName}". Tienes hasta el final del d\u00eda para decidir: perder una vida o completar un challenge.`,
+            related_habit_id: habitId,
+          },
+          connection,
+        );
+      }
+    }
+
+    await connection.commit();
+
+    return {
+      user_id: userId,
+      date: dateStr,
+      missed_habits: missedHabitIds,
+      pending_redemptions_created: pendingCreated,
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+/**
+ * Evaluates all users for missed habits and creates pending redemptions
+ * This function should be called daily (e.g., at 00:05)
+ */
+export async function evaluateAllUsersWithPendingRedemptions(): Promise<PendingRedemptionResult[]> {
+  const [users] = await pool.query<RowDataPacket[]>('SELECT id FROM USERS WHERE is_active = 1');
+
+  const results: PendingRedemptionResult[] = [];
+  const yesterday = subDays(new Date(), 1);
+
+  for (const user of users) {
+    try {
+      const result = await evaluateMissedHabitsWithPendingRedemptions(user.id, yesterday);
+      results.push(result);
+    } catch (error) {
+      console.error(`Error evaluating habits for user ${user.id}:`, error);
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Process expired pending redemptions
+ * Called at the start of daily evaluation - expires pendings from previous days
+ */
+export async function processExpiredPendingRedemptions(): Promise<number> {
+  // Get pendings that were created before today (user didn't decide in time)
+  const expired = await PendingRedemptionModel.getPendingToAutoExpire();
+  let processedCount = 0;
+
+  for (const pending of expired) {
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      // Mark as expired
+      await PendingRedemptionModel.markAsExpired(pending.id, connection);
+
+      // If user had assigned a challenge, mark it as expired too
+      if (pending.challenge_id) {
+        await connection.query(
+          `UPDATE USER_CHALLENGES
+           SET status = 'expired', completed_at = NOW()
+           WHERE user_id = ? AND challenge_id = ? AND status = 'assigned'`,
+          [pending.user_id, pending.challenge_id],
+        );
+      }
+
+      // Deduct one life from the user
+      await connection.query('UPDATE USERS SET lives = GREATEST(0, lives - 1) WHERE id = ?', [pending.user_id]);
+
+      // Get current lives
+      const [userRows] = await connection.query<RowDataPacket[]>('SELECT lives FROM USERS WHERE id = ?', [
+        pending.user_id,
+      ]);
+      const currentLives = userRows[0]?.lives ?? 0;
+
+      // Record in LIFE_HISTORY
+      await LifeHistoryModel.create(
+        pending.user_id,
+        -1,
+        currentLives,
+        'pending_expired',
+        { habitId: pending.habit_id },
+        connection,
+      );
+
+      // Apply extra discipline penalty for not deciding
+      await onPendingExpired(pending.user_id, connection);
+
+      // Create notification
+      await NotificationModel.create(
+        {
+          user_id: pending.user_id,
+          type: 'life_warning',
+          title: 'Redenci\u00f3n expirada',
+          message: `El tiempo para redimir tu h\u00e1bito fallado expir\u00f3. Perdiste 1 vida. Vidas restantes: ${currentLives}`,
+          related_habit_id: pending.habit_id,
+        },
+        connection,
+      );
+
+      // Check if user died
+      if (currentLives === 0) {
+        await handleUserDeath(pending.user_id, connection);
+      }
+
+      await connection.commit();
+      processedCount++;
+    } catch (error) {
+      await connection.rollback();
+      console.error(`Error processing expired pending ${pending.id}:`, error);
+    } finally {
+      connection.release();
+    }
+  }
+
+  return processedCount;
+}
+
+/**
+ * Handle user death (when lives reach 0)
+ * Disables all active habits and creates death notification
+ */
+export async function handleUserDeath(userId: string, connection: PoolConnection): Promise<void> {
+  // Cancel all pending redemptions (user is already dead, can't lose more lives)
+  const cancelledCount = await PendingRedemptionModel.cancelAllForUser(userId, connection);
+  if (cancelledCount > 0) {
+    console.warn(`[handleUserDeath] Cancelled ${cancelledCount} pending redemptions for user ${userId}`);
+  }
+
+  // Also mark any assigned challenges as expired (user died before completing them)
+  await connection.query(
+    `UPDATE USER_CHALLENGES SET status = 'expired', completed_at = NOW()
+     WHERE user_id = ? AND status = 'assigned'`,
+    [userId],
+  );
+
+  // Disable all active habits
+  await connection.query(
+    `UPDATE HABITS
+     SET is_active = 0,
+         disabled_at = NOW(),
+         disabled_reason = 'no_lives'
+     WHERE user_id = ?
+     AND is_active = 1`,
+    [userId],
+  );
+
+  // Create death notification
+  await NotificationModel.create(
+    {
+      user_id: userId,
+      type: 'death',
+      title: '\u00a1Has perdido todas tus vidas!',
+      message:
+        'Todos tus h\u00e1bitos han sido desactivados. Debes completar una penitencia para revivir o empezar de cero.',
+    },
+    connection,
+  );
+}
+
+/**
+ * Send notifications for pending redemptions about to expire
+ * This should be called every hour
+ */
+export async function notifyExpiringRedemptions(hoursBeforeExpiry: number = 3): Promise<number> {
+  const expiring = await PendingRedemptionModel.getExpiringWithinHours(hoursBeforeExpiry);
+  let notifiedCount = 0;
+
+  for (const pending of expiring) {
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      // Create notification
+      const timeRemaining = Math.ceil((new Date(pending.expires_at).getTime() - Date.now()) / (1000 * 60 * 60));
+      await NotificationModel.create(
+        {
+          user_id: pending.user_id,
+          type: 'pending_expiring',
+          title: '\u00a1Tiempo limitado!',
+          message: `Te quedan aproximadamente ${timeRemaining} horas para redimir "${pending.habit_name}". Decide antes de que expire.`,
+          related_habit_id: pending.habit_id,
+        },
+        connection,
+      );
+
+      // Mark as notified
+      await PendingRedemptionModel.markAsNotified(pending.id, connection);
+
+      await connection.commit();
+      notifiedCount++;
+    } catch (error) {
+      await connection.rollback();
+      console.error(`Error notifying for pending ${pending.id}:`, error);
+    } finally {
+      connection.release();
+    }
+  }
+
+  return notifiedCount;
 }
