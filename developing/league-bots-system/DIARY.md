@@ -75,6 +75,13 @@ Sistema de ligas competitivas semanales con bots de relleno para mantener 20 com
 ### Bugs Corregidos
 - Length leak en constant-time comparison → SHA-256 hash + `crypto.timingSafeEqual`
 
+## 2026-01-02 - Integración XP ↔ Ligas
+
+### Bug Corregido
+- Matchmaking usaba `u.weekly_xp` que ya estaba reseteado a 0
+- Fix: Usar `ulh.weekly_xp` (XP de semana anterior desde USER_LEAGUE_HISTORY)
+- Ahora `ORDER BY COALESCE(ulh.weekly_xp, 0) DESC` para agrupar por XP similar
+
 ## Sistema Completado
 - 4 fases implementadas
 - 4 code reviews completos (todas las fases)

@@ -7,6 +7,7 @@ interface UserWithLeagueHistory {
   id: string;
   name: string;
   weekly_xp: number;
+  last_weekly_xp: number | null;
   last_league_id: number | null;
   change_type: string | null;
 }
@@ -89,6 +90,8 @@ export async function getLeagueWeekByDate(weekStart: Date): Promise<LeagueWeek |
 /**
  * FIX #1: Obtener usuarios activos CON su último historial en UNA SOLA QUERY
  * Evita N+1 queries
+ * FIX: Ordenar por XP de semana anterior (last_weekly_xp) para matchmaking correcto
+ *      porque weekly_xp actual ya fue reseteado a 0 por resetWeeklyXp()
  */
 async function getActiveUsersWithHistory(connection: PoolConnection): Promise<UserForLeague[]> {
   const [rows] = await connection.query<RowDataPacket[]>(
@@ -96,11 +99,12 @@ async function getActiveUsersWithHistory(connection: PoolConnection): Promise<Us
        u.id,
        u.name,
        u.weekly_xp,
+       ulh.weekly_xp as last_weekly_xp,
        ulh.league_id as last_league_id,
        ulh.change_type
      FROM USERS u
      LEFT JOIN (
-       SELECT ulh1.user_id, ulh1.league_id, ulh1.change_type
+       SELECT ulh1.user_id, ulh1.league_id, ulh1.change_type, ulh1.weekly_xp
        FROM USER_LEAGUE_HISTORY ulh1
        INNER JOIN (
          SELECT user_id, MAX(lw.week_start) as max_week
@@ -111,13 +115,13 @@ async function getActiveUsersWithHistory(connection: PoolConnection): Promise<Us
        JOIN LEAGUE_WEEKS lw ON ulh1.league_week_id = lw.id AND lw.week_start = latest.max_week
      ) ulh ON u.id = ulh.user_id
      WHERE u.updated_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-     ORDER BY u.weekly_xp DESC`
+     ORDER BY COALESCE(ulh.weekly_xp, 0) DESC`
   );
 
   return (rows as UserWithLeagueHistory[]).map(row => ({
     id: row.id,
     name: row.name,
-    weekly_xp: row.weekly_xp,
+    weekly_xp: row.last_weekly_xp ?? 0,
     targetLeague: calculateTargetLeague(row.last_league_id, row.change_type),
   }));
 }
