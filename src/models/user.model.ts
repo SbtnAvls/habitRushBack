@@ -1,6 +1,6 @@
 import pool from '../db';
 import { v4 as uuidv4 } from 'uuid';
-import { RowDataPacket } from 'mysql2';
+import { RowDataPacket, PoolConnection } from 'mysql2/promise';
 
 export interface User {
   id: string;
@@ -52,5 +52,16 @@ export class UserModel {
 
   static async updateLives(userId: string, newLives: number): Promise<void> {
     await pool.query('UPDATE USERS SET lives = ? WHERE id = ?', [newLives, userId]);
+  }
+
+  static async updateXp(userId: string, xpToAdd: number, connection?: PoolConnection): Promise<void> {
+    const query = 'UPDATE USERS SET xp = xp + ?, weekly_xp = weekly_xp + ? WHERE id = ?';
+    const params = [xpToAdd, xpToAdd, userId];
+
+    if (connection) {
+      await connection.query(query, params);
+    } else {
+      await pool.query(query, params);
+    }
   }
 }

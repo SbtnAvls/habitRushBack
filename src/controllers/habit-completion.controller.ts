@@ -4,6 +4,7 @@ import { CompletionImage } from '../models/completion-image.model';
 import { PendingRedemptionModel } from '../models/pending-redemption.model';
 import { evaluateLifeChallenges } from '../services/life-challenge-evaluation.service';
 import { calculateAndUpdateStreak } from '../services/streak-calculation.service';
+import { grantHabitCompletionXp, checkAndGrantDailyBonus } from '../services/xp.service';
 import { AuthRequest } from '../middleware/auth.middleware';
 
 export class HabitCompletionController {
@@ -44,19 +45,47 @@ export class HabitCompletionController {
         return res.status(400).json({ message: 'date, completed and progress_type are required fields.' });
       }
 
-      const completion: HabitCompletionRecord & { current_streak?: number; new_life_challenges_obtained?: unknown[] } =
-        await HabitCompletion.createOrUpdate({
-          ...req.body,
-          habit_id: habitId,
-          user_id: userId,
-        });
+      // Check if this habit was already completed for this date (to prevent XP farming)
+      const wasAlreadyCompleted = completed
+        ? await HabitCompletion.wasAlreadyCompleted(habitId, userId, date)
+        : false;
+
+      const completion: HabitCompletionRecord & {
+        current_streak?: number;
+        new_life_challenges_obtained?: unknown[];
+        xp_gained?: number;
+        daily_bonus_xp?: number;
+      } = await HabitCompletion.createOrUpdate({
+        ...req.body,
+        habit_id: habitId,
+        user_id: userId,
+      });
 
       // Calcular y actualizar el streak actual del hábito
+      let currentStreak = 0;
       try {
-        const currentStreak = await calculateAndUpdateStreak(habitId, userId);
+        currentStreak = await calculateAndUpdateStreak(habitId, userId);
         completion.current_streak = currentStreak;
       } catch (_streakError) {
         // No fallar la operación principal si falla el cálculo del streak
+      }
+
+      // Otorgar XP solo si el hábito fue completado Y no estaba ya completado antes
+      // Esto previene XP farming al re-enviar completions
+      if (completed && !wasAlreadyCompleted) {
+        try {
+          const xpGained = await grantHabitCompletionXp(userId, currentStreak);
+          completion.xp_gained = xpGained;
+
+          // Check and grant daily bonus if all habits are completed
+          const dailyBonus = await checkAndGrantDailyBonus(userId, date);
+          if (dailyBonus > 0) {
+            completion.daily_bonus_xp = dailyBonus;
+          }
+        } catch (xpError) {
+          // No fallar la operación principal si falla el otorgamiento de XP
+          console.error('Error granting XP for habit completion:', xpError);
+        }
       }
 
       // Evaluar Life Challenges automáticamente después de completar un hábito

@@ -2,6 +2,7 @@ import pool from '../db';
 import { v4 as uuidv4 } from 'uuid';
 import { RowDataPacket } from 'mysql2';
 import { reviveUser } from './habit-evaluation.service';
+import { grantChallengeCompletionXp } from './xp.service';
 
 export interface ChallengeProof {
   id: string;
@@ -181,6 +182,9 @@ export async function submitChallengeProof(
          VALUES (UUID_TO_BIN(?), UUID_TO_BIN(?), ?, ?, ?, UUID_TO_BIN(?), NOW())`,
         [historyId, userId, 0, 0, 'challenge_completed', userChallengeId],
       );
+
+      // Grant XP for completing the challenge (within transaction)
+      await grantChallengeCompletionXp(userId, connection);
 
       // Revivir al usuario (restaurar vidas y reactivar hábitos)
       await connection.commit();

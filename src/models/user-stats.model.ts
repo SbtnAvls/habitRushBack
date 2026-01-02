@@ -10,6 +10,7 @@ export interface UserStats {
   perfect_weeks: number;
   revival_count: number;
   reset_count: number;
+  last_daily_bonus_date: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -111,5 +112,27 @@ export class UserStatsModel {
       [limit],
     );
     return rows;
+  }
+
+  /**
+   * Check if daily bonus was already granted for a specific date
+   */
+  static async hasDailyBonusForDate(userId: string, date: string): Promise<boolean> {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      'SELECT last_daily_bonus_date FROM USER_STATS WHERE user_id = ? AND last_daily_bonus_date = ?',
+      [userId, date],
+    );
+    return rows.length > 0;
+  }
+
+  /**
+   * Set the last daily bonus date
+   */
+  static async setDailyBonusDate(userId: string, date: string, connection?: PoolConnection): Promise<void> {
+    const conn = connection || pool;
+    await conn.query(
+      `UPDATE USER_STATS SET last_daily_bonus_date = ?, updated_at = NOW() WHERE user_id = ?`,
+      [date, userId],
+    );
   }
 }

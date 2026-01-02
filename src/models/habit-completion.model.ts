@@ -132,4 +132,16 @@ export class HabitCompletion {
     ]);
     return result.affectedRows > 0;
   }
+
+  /**
+   * Check if a completion already exists and is marked as completed
+   * Used to prevent XP farming by repeatedly "completing" the same habit
+   */
+  static async wasAlreadyCompleted(habitId: string, userId: string, date: string): Promise<boolean> {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      'SELECT completed FROM HABIT_COMPLETIONS WHERE habit_id = ? AND user_id = ? AND `date` = ? AND completed = 1',
+      [habitId, userId, date],
+    );
+    return rows.length > 0;
+  }
 }
