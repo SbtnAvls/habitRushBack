@@ -22,8 +22,9 @@ const getCurrentLeague = async (req: AuthRequest, res: Response) => {
     }
     const currentWeekId = weekRows[0].id as number;
 
+    // Obtener liga Y grupo del usuario
     const [competitorRows] = await db.query<RowDataPacket[]>(
-      'SELECT league_id FROM LEAGUE_COMPETITORS WHERE user_id = ? AND league_week_id = ?',
+      'SELECT league_id, league_group FROM LEAGUE_COMPETITORS WHERE user_id = ? AND league_week_id = ?',
       [userId, currentWeekId],
     );
 
@@ -32,6 +33,7 @@ const getCurrentLeague = async (req: AuthRequest, res: Response) => {
       return;
     }
     const userLeagueId = competitorRows[0].league_id as number;
+    const userLeagueGroup = competitorRows[0].league_group as number;
 
     const [leagueInfoRows] = await db.query<RowDataPacket[]>(
       'SELECT id, name, color_hex as colorHex FROM LEAGUES WHERE id = ?',
@@ -43,22 +45,33 @@ const getCurrentLeague = async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    // Filtrar por liga Y grupo
     const [competitorsRows] = await db.query<RowDataPacket[]>(
-      `SELECT 
-          name, 
-          weekly_xp AS weeklyXp, 
-          position, 
-          is_real AS isReal, 
-          user_id AS userId
-       FROM LEAGUE_COMPETITORS 
-       WHERE league_id = ? AND league_week_id = ? 
+      `SELECT
+          name,
+          weekly_xp AS weeklyXp,
+          position,
+          is_real AS isReal,
+          user_id AS odUserId
+       FROM LEAGUE_COMPETITORS
+       WHERE league_id = ? AND league_week_id = ? AND league_group = ?
        ORDER BY position ASC`,
-      [userLeagueId, currentWeekId],
+      [userLeagueId, currentWeekId, userLeagueGroup],
     );
+
+    // Marcar cuál competidor es el usuario actual
+    const competitors = competitorsRows.map(c => ({
+      name: c.name,
+      weeklyXp: c.weeklyXp,
+      position: c.position,
+      isReal: c.isReal,
+      isCurrentUser: c.odUserId === userId,
+    }));
 
     res.status(200).json({
       league: leagueInfoRows[0],
-      competitors: competitorsRows,
+      leagueGroup: userLeagueGroup,
+      competitors,
     });
   } catch (_error) {
     res.status(500).json({ message: 'Error fetching current league information.' });
@@ -77,9 +90,9 @@ const getLeagueHistory = async (req: AuthRequest, res: Response) => {
     }
 
     const [historyRows] = await db.query<RowDataPacket[]>(
-      `SELECT 
-          ulh.weekly_xp AS weeklyXp, 
-          ulh.position, 
+      `SELECT
+          ulh.weekly_xp AS weeklyXp,
+          ulh.position,
           ulh.change_type AS changeType,
           l.name AS leagueName,
           l.color_hex AS leagueColor,

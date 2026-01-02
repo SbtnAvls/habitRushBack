@@ -287,17 +287,20 @@ CREATE TABLE LEAGUE_WEEKS (
 );
 
 -- LEAGUE COMPETITORS (reales y simulados)
+-- league_group permite múltiples grupos por liga (matchmaking por XP similar)
 CREATE TABLE LEAGUE_COMPETITORS (
   id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
   league_week_id INT NOT NULL,
   league_id SMALLINT NOT NULL,
+  league_group SMALLINT NOT NULL DEFAULT 1,
   user_id CHAR(36) NULL,
   name TEXT NOT NULL,
   weekly_xp INT NOT NULL DEFAULT 0,
   position SMALLINT NOT NULL,
   is_real BOOLEAN NOT NULL DEFAULT FALSE,
+  bot_profile ENUM('lazy', 'casual', 'active', 'hardcore') NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE (league_week_id, league_id, position),
+  UNIQUE (league_week_id, league_id, league_group, position),
   UNIQUE (league_week_id, user_id),
   FOREIGN KEY (league_week_id) REFERENCES LEAGUE_WEEKS(id) ON DELETE CASCADE,
   FOREIGN KEY (league_id) REFERENCES LEAGUES(id),
