@@ -32,9 +32,6 @@ interface BotProfileConfig {
   hourlyActivityChance: number; // probabilidad de completar habito en cada hora activa
 }
 
-// Active hours configuration (7am to 10pm = 15 hours window)
-const ACTIVE_HOURS_PER_DAY = 15;
-
 // ============================================================================
 // PHASE 3: Hourly Activity Patterns (Human-like behavior)
 // ============================================================================
@@ -52,7 +49,7 @@ const ACTIVE_HOURS_PER_DAY = 15;
  * - Late night: 0-5 AM (0.01-0.05) - most people sleeping
  * - Work hours: 15-17 (0.3-0.5) - lower but not zero
  */
-const HOURLY_ACTIVITY_WEIGHTS: Record<number, number> = {
+export const HOURLY_ACTIVITY_WEIGHTS: Record<number, number> = {
   0: 0.05,
   1: 0.02,
   2: 0.01,

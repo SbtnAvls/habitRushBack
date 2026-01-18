@@ -9,6 +9,7 @@ import {
   simulateBotHabitCompletion,
   getBotDailyProgress,
   getCurrentHourActivityInfo,
+  HOURLY_ACTIVITY_WEIGHTS,
 } from '../services/league-bot.service';
 import { processWeekEnd, resetWeeklyXp, getWeekSummary, cleanupOldLeagueWeeks } from '../services/league-weekly-processor.service';
 
@@ -59,6 +60,8 @@ export const startWeek = async (req: AuthRequest, res: Response) => {
 // @desc    Simular XP de bots (ejecutar diariamente)
 // @route   POST /leagues/admin/simulate-bots
 // @access  Private (Admin)
+// @deprecated Use triggerBotHabitSimulation instead - this gives all XP at once
+//             The new system simulates incremental XP throughout the day
 export const simulateBots = async (req: AuthRequest, res: Response) => {
   try {
     const currentWeek = await getCurrentLeagueWeek();
@@ -76,7 +79,7 @@ export const simulateBots = async (req: AuthRequest, res: Response) => {
       botsUpdated: result.botsUpdated,
       totalXpAdded: result.totalXpAdded,
     });
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({ message: 'Error simulating bot XP' });
   }
 };
@@ -115,7 +118,7 @@ export const endWeek = async (req: AuthRequest, res: Response) => {
       resultsByLeague: result.byLeague,
       usersXpReset: usersReset,
     });
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({ message: 'Error ending league week' });
   }
 };
@@ -138,7 +141,7 @@ export const getWeekStatus = async (req: AuthRequest, res: Response) => {
       weekStart: currentWeek.week_start,
       ...summary,
     });
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({ message: 'Error getting week summary' });
   }
 };
@@ -162,7 +165,7 @@ export const updatePositions = async (req: AuthRequest, res: Response) => {
       usersSynced,
       groupsUpdated,
     });
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({ message: 'Error updating positions' });
   }
 };
@@ -188,7 +191,7 @@ export const cleanup = async (req: AuthRequest, res: Response) => {
       weeksDeleted: result.weeksDeleted,
       competitorsDeleted: result.competitorsDeleted,
     });
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({ message: 'Error during cleanup' });
   }
 };
@@ -227,7 +230,7 @@ export const getBotProgress = async (req: AuthRequest, res: Response) => {
         avgProgressPercent: progress.avgProgressPercent,
       },
     });
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({ message: 'Error getting bot progress' });
   }
 };
@@ -251,7 +254,7 @@ export const triggerBotReset = async (req: AuthRequest, res: Response) => {
       botsReset: result.botsReset,
       botsSkippingToday: result.botsSkippingToday,
     });
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({ message: 'Error executing daily bot reset' });
   }
 };
@@ -292,7 +295,7 @@ export const triggerBotHabitSimulation = async (req: AuthRequest, res: Response)
         groupsUpdated: posResult.groupsUpdated,
       },
     });
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({ message: 'Error executing bot habit simulation' });
   }
 };
@@ -307,34 +310,7 @@ export const getActivityInfo = async (req: AuthRequest, res: Response) => {
     // Generate the full 24-hour activity table for reference
     const hourlyWeights: Record<number, { weight: number; level: string }> = {};
     for (let h = 0; h < 24; h++) {
-      // Get base weights directly (same as HOURLY_ACTIVITY_WEIGHTS)
-      const weights: Record<number, number> = {
-        0: 0.05,
-        1: 0.02,
-        2: 0.01,
-        3: 0.01,
-        4: 0.02,
-        5: 0.05,
-        6: 0.3,
-        7: 0.6,
-        8: 0.8,
-        9: 0.5,
-        10: 0.3,
-        11: 0.4,
-        12: 0.7,
-        13: 0.6,
-        14: 0.4,
-        15: 0.3,
-        16: 0.4,
-        17: 0.5,
-        18: 0.7,
-        19: 0.9,
-        20: 1.0,
-        21: 0.8,
-        22: 0.5,
-        23: 0.2,
-      };
-      const weight = weights[h];
+      const weight = HOURLY_ACTIVITY_WEIGHTS[h];
       let level: string;
       if (weight >= 0.8) level = 'very high';
       else if (weight >= 0.6) level = 'high';
@@ -356,7 +332,7 @@ export const getActivityInfo = async (req: AuthRequest, res: Response) => {
         'Higher weights mean more bot activity. Peaks are at 8am (0.8), 12pm (0.7), and 8pm (1.0).',
       hourlyWeights,
     });
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({ message: 'Error getting activity info' });
   }
 };
