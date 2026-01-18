@@ -1,5 +1,11 @@
 import { getCurrentLeagueWeek, startNewLeagueWeek } from './league-management.service';
-import { simulateDailyBotXp, updateAllLeaguePositions, fillAllLeaguesWithBots } from './league-bot.service';
+import {
+  simulateBotHabitCompletion,
+  resetDailyBotXp,
+  updateAllLeaguePositions,
+  fillAllLeaguesWithBots,
+  getCurrentHourActivityInfo,
+} from './league-bot.service';
 import { processWeekEnd, resetWeeklyXp, cleanupOldLeagueWeeks } from './league-weekly-processor.service';
 
 /**
@@ -7,15 +13,21 @@ import { processWeekEnd, resetWeeklyXp, cleanupOldLeagueWeeks } from './league-w
  * Handles automatic execution of league-related cron jobs
  *
  * Jobs:
- * - Daily: Simulate bot XP, Update league positions
+ * - Bot Simulation: Reset daily targets at 00:00, simulate habit completions every 30-45 min (7am-11pm)
+ * - Daily: Update league positions at 08:00
  * - Weekly: End league week (Sunday), Start new week (Monday)
  * - Monthly: Cleanup old league weeks
  */
 export class LeagueSchedulerService {
   private isRunning: boolean = false;
-  private dailyInterval: NodeJS.Timeout | null = null;
   private weeklyCheckInterval: NodeJS.Timeout | null = null;
   private monthlyInterval: NodeJS.Timeout | null = null;
+  private monthlyCleanupTimeout: NodeJS.Timeout | null = null; // BUG-4 FIX: Save initial timeout
+  private positionUpdateInterval: NodeJS.Timeout | null = null;
+  private positionUpdateTimeout: NodeJS.Timeout | null = null; // BUG-2 FIX: Save initial timeout
+  private botSimulationInterval: NodeJS.Timeout | null = null;
+  private dailyResetTimeout: NodeJS.Timeout | null = null;
+  private dailyResetInterval: NodeJS.Timeout | null = null;
 
   /**
    * Start all league schedulers
@@ -29,8 +41,11 @@ export class LeagueSchedulerService {
     this.isRunning = true;
     console.warn('[LeagueScheduler] Starting league scheduler service...');
 
-    // Start daily jobs (bot XP simulation + position updates)
-    this.startDailyJobs();
+    // Start bot simulation jobs (frequent habit completion + daily reset)
+    this.startBotSimulationJobs();
+
+    // Start daily position updates at 08:00
+    this.startPositionUpdateJob();
 
     // Start weekly job checker (end week on Sunday, start week on Monday)
     this.startWeeklyJobs();
@@ -45,13 +60,35 @@ export class LeagueSchedulerService {
    * Stop all schedulers
    */
   stop(): void {
-    if (this.dailyInterval) {
-      clearInterval(this.dailyInterval);
-      this.dailyInterval = null;
+    if (this.botSimulationInterval) {
+      clearTimeout(this.botSimulationInterval); // setTimeout, not setInterval
+      this.botSimulationInterval = null;
+    }
+    if (this.dailyResetTimeout) {
+      clearTimeout(this.dailyResetTimeout);
+      this.dailyResetTimeout = null;
+    }
+    if (this.dailyResetInterval) {
+      clearInterval(this.dailyResetInterval);
+      this.dailyResetInterval = null;
+    }
+    // BUG-2 FIX: Clear position update timeout
+    if (this.positionUpdateTimeout) {
+      clearTimeout(this.positionUpdateTimeout);
+      this.positionUpdateTimeout = null;
+    }
+    if (this.positionUpdateInterval) {
+      clearInterval(this.positionUpdateInterval);
+      this.positionUpdateInterval = null;
     }
     if (this.weeklyCheckInterval) {
       clearInterval(this.weeklyCheckInterval);
       this.weeklyCheckInterval = null;
+    }
+    // BUG-4 FIX: Clear monthly cleanup timeout
+    if (this.monthlyCleanupTimeout) {
+      clearTimeout(this.monthlyCleanupTimeout);
+      this.monthlyCleanupTimeout = null;
     }
     if (this.monthlyInterval) {
       clearInterval(this.monthlyInterval);
@@ -77,36 +114,94 @@ export class LeagueSchedulerService {
   }
 
   /**
-   * Start daily jobs: Bot XP simulation at 00:10 and position updates at 08:00
+   * Generate random interval between min and max minutes
    */
-  private startDailyJobs(): void {
-    // Schedule bot XP simulation at 00:10 daily
-    const timeUntilBotXp = this.getTimeUntilHour(0, 10);
+  private getRandomIntervalMs(minMinutes: number, maxMinutes: number): number {
+    const minutes = Math.floor(Math.random() * (maxMinutes - minMinutes + 1)) + minMinutes;
+    return minutes * 60 * 1000;
+  }
+
+  /**
+   * Check if current hour is within active hours for bot simulation (7am-11pm)
+   */
+  private isActiveHour(): boolean {
+    const hour = new Date().getHours();
+    return hour >= 7 && hour <= 23;
+  }
+
+  /**
+   * Start bot simulation jobs:
+   * - Daily reset at 00:00 (set daily targets for all bots)
+   * - Frequent simulation every 30-45 minutes during active hours (7am-11pm)
+   */
+  private startBotSimulationJobs(): void {
+    // 1. Schedule daily reset at 00:00
+    const timeUntilReset = this.getTimeUntilHour(0, 0);
     console.warn(
-      `[LeagueScheduler] Bot XP simulation scheduled in ${Math.round(timeUntilBotXp / 1000 / 60)} minutes`,
+      `[LeagueScheduler] Daily bot reset scheduled in ${Math.round(timeUntilReset / 1000 / 60)} minutes (at 00:00)`,
     );
 
-    setTimeout(() => {
-      this.runDailyBotXpSimulation();
+    this.dailyResetTimeout = setTimeout(() => {
+      this.runDailyBotReset();
       // Then run every 24 hours
-      this.dailyInterval = setInterval(
+      this.dailyResetInterval = setInterval(
         () => {
-          this.runDailyBotXpSimulation();
+          this.runDailyBotReset();
         },
         24 * 60 * 60 * 1000,
       );
-    }, timeUntilBotXp);
+    }, timeUntilReset);
 
-    // Schedule position updates at 08:00 daily
-    const timeUntilPositions = this.getTimeUntilHour(8, 0);
+    // 2. Start frequent bot habit simulation
+    // Run immediately if within active hours, then schedule recurring
+    if (this.isActiveHour()) {
+      console.warn('[LeagueScheduler] Starting bot simulation immediately (within active hours)');
+      this.runBotHabitSimulation();
+    } else {
+      console.warn('[LeagueScheduler] Outside active hours (7am-11pm), bot simulation will start at 7am');
+    }
+
+    // Schedule recurring simulation every 30-45 minutes
+    this.scheduleBotSimulation();
+  }
+
+  /**
+   * Schedule the next bot simulation with random interval (30-45 minutes)
+   */
+  private scheduleBotSimulation(): void {
+    const interval = this.getRandomIntervalMs(30, 45);
     console.warn(
-      `[LeagueScheduler] Position updates scheduled in ${Math.round(timeUntilPositions / 1000 / 60)} minutes`,
+      `[LeagueScheduler] Next bot simulation in ${Math.round(interval / 1000 / 60)} minutes`,
     );
 
-    setTimeout(() => {
+    this.botSimulationInterval = setTimeout(() => {
+      if (this.isActiveHour()) {
+        this.runBotHabitSimulation();
+      } else {
+        const activityInfo = getCurrentHourActivityInfo();
+        console.warn(
+          `[LeagueScheduler] Skipping bot simulation - hour ${activityInfo.hour} is outside active hours (7am-11pm)`,
+        );
+      }
+      // Schedule next execution with new random interval
+      this.scheduleBotSimulation();
+    }, interval);
+  }
+
+  /**
+   * Start daily position update job at 08:00
+   */
+  private startPositionUpdateJob(): void {
+    const timeUntilPositions = this.getTimeUntilHour(8, 0);
+    console.warn(
+      `[LeagueScheduler] Position updates scheduled in ${Math.round(timeUntilPositions / 1000 / 60)} minutes (at 08:00)`,
+    );
+
+    // BUG-2 FIX: Save timeout in variable so stop() can cancel it
+    this.positionUpdateTimeout = setTimeout(() => {
       this.runPositionUpdates();
       // Then run every 24 hours
-      setInterval(
+      this.positionUpdateInterval = setInterval(
         () => {
           this.runPositionUpdates();
         },
@@ -147,7 +242,8 @@ export class LeagueSchedulerService {
       `[LeagueScheduler] Monthly cleanup scheduled in ${Math.round(timeUntilCleanup / 1000 / 60 / 60 / 24)} days`,
     );
 
-    setTimeout(() => {
+    // BUG-4 FIX: Save timeout in variable so stop() can cancel it
+    this.monthlyCleanupTimeout = setTimeout(() => {
       this.runMonthlyCleanup();
       // Then run every ~30 days (will recalculate on each run)
       this.monthlyInterval = setInterval(
@@ -160,24 +256,53 @@ export class LeagueSchedulerService {
   }
 
   /**
-   * Run daily bot XP simulation
+   * Run daily bot reset (at 00:00)
+   * Sets daily XP targets for all bots based on their profiles
    */
-  private async runDailyBotXpSimulation(): Promise<void> {
+  private async runDailyBotReset(): Promise<void> {
     try {
-      console.warn('[LeagueScheduler] Running daily bot XP simulation...');
+      console.warn('[LeagueScheduler] Running daily bot XP reset...');
       const currentWeek = await getCurrentLeagueWeek();
 
       if (!currentWeek) {
-        console.warn('[LeagueScheduler] No active league week found, skipping bot simulation');
+        console.warn('[LeagueScheduler] No active league week found, skipping bot reset');
         return;
       }
 
-      const result = await simulateDailyBotXp(currentWeek.id);
+      const result = await resetDailyBotXp(currentWeek.id);
       console.warn(
-        `[LeagueScheduler] Bot XP simulation complete: ${result.botsUpdated} bots updated, ${result.totalXpAdded} XP added`,
+        `[LeagueScheduler] Bot reset complete: ${result.botsReset} bots with targets, ${result.botsSkippingToday} bots skipping today`,
       );
     } catch (error) {
-      console.error('[LeagueScheduler] Error in bot XP simulation:', error);
+      console.error('[LeagueScheduler] Error in daily bot reset:', error);
+    }
+  }
+
+  /**
+   * Run bot habit simulation (every 30-45 minutes during active hours)
+   * Simulates individual habit completions for bots that are active
+   */
+  private async runBotHabitSimulation(): Promise<void> {
+    try {
+      const currentWeek = await getCurrentLeagueWeek();
+
+      if (!currentWeek) {
+        return; // Silent return - no need to log every 30 min when no week exists
+      }
+
+      const activityInfo = getCurrentHourActivityInfo();
+      const result = await simulateBotHabitCompletion(currentWeek.id);
+
+      // Only log if there was meaningful activity
+      if (result.botsUpdated > 0 || result.totalXpAdded > 0) {
+        console.warn(
+          `[LeagueScheduler] Bot simulation (hour ${activityInfo.hour}, ${activityInfo.expectedActivity} activity): ` +
+            `${result.botsUpdated} habits completed, ${result.totalXpAdded} XP added, ` +
+            `${result.botsAtLimit} at daily limit, ${result.botsSkippedByHour} skipped by hour pattern`,
+        );
+      }
+    } catch (error) {
+      console.error('[LeagueScheduler] Error in bot habit simulation:', error);
     }
   }
 
@@ -332,12 +457,31 @@ export class LeagueSchedulerService {
   }
 
   /**
-   * Manually trigger bot XP simulation (for testing)
+   * Manually trigger bot habit simulation (for testing)
+   * Simulates a single cycle of habit completions
    */
-  async triggerBotXpSimulation(): Promise<{ botsUpdated: number; totalXpAdded: number } | null> {
+  async triggerBotHabitSimulation(): Promise<{
+    botsUpdated: number;
+    totalXpAdded: number;
+    botsAtLimit: number;
+    botsSkippedByHour: number;
+  } | null> {
     const currentWeek = await getCurrentLeagueWeek();
     if (!currentWeek) return null;
-    return simulateDailyBotXp(currentWeek.id);
+    return simulateBotHabitCompletion(currentWeek.id);
+  }
+
+  /**
+   * Manually trigger daily bot reset (for testing)
+   * Sets daily targets for all bots
+   */
+  async triggerDailyBotReset(): Promise<{
+    botsReset: number;
+    botsSkippingToday: number;
+  } | null> {
+    const currentWeek = await getCurrentLeagueWeek();
+    if (!currentWeek) return null;
+    return resetDailyBotXp(currentWeek.id);
   }
 
   /**

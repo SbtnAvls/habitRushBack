@@ -302,19 +302,29 @@ CREATE TABLE LEAGUE_COMPETITORS (
   league_id SMALLINT NOT NULL,
   league_group SMALLINT NOT NULL DEFAULT 1,
   user_id CHAR(36) NULL,
-  name TEXT NOT NULL,
+  username TEXT NOT NULL,
   weekly_xp INT NOT NULL DEFAULT 0,
   position SMALLINT NOT NULL,
   is_real BOOLEAN NOT NULL DEFAULT FALSE,
   bot_profile ENUM('lazy', 'casual', 'active', 'hardcore') NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  -- Daily XP tracking for realistic bot simulation
+  daily_xp_today INT DEFAULT 0,
+  daily_xp_target INT DEFAULT 0,
+  last_xp_reset_date DATE DEFAULT NULL,
   UNIQUE (league_week_id, league_id, league_group, position),
   UNIQUE (league_week_id, user_id),
   FOREIGN KEY (league_week_id) REFERENCES LEAGUE_WEEKS(id) ON DELETE CASCADE,
   FOREIGN KEY (league_id) REFERENCES LEAGUES(id),
   FOREIGN KEY (user_id) REFERENCES USERS(id) ON DELETE CASCADE,
-  CONSTRAINT chk_league_competitors_weekly_xp CHECK (weekly_xp >= 0),
-  CONSTRAINT chk_league_competitors_position CHECK (position BETWEEN 1 AND 20)
+  CONSTRAINT chk_league_competitors_weekly_xp CHECK (weekly_xp >= 0)
+);
+
+-- Index for efficient queries when filtering bots that need updates
+CREATE INDEX idx_league_competitors_bot_daily ON LEAGUE_COMPETITORS (
+  league_week_id,
+  is_real,
+  last_xp_reset_date
 );
 
 -- USER LEAGUE HISTORY

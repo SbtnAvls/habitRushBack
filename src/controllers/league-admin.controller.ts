@@ -1,7 +1,15 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { startNewLeagueWeek, getCurrentLeagueWeek } from '../services/league-management.service';
-import { fillAllLeaguesWithBots, simulateDailyBotXp, updateAllLeaguePositions } from '../services/league-bot.service';
+import {
+  fillAllLeaguesWithBots,
+  simulateDailyBotXp,
+  updateAllLeaguePositions,
+  resetDailyBotXp,
+  simulateBotHabitCompletion,
+  getBotDailyProgress,
+  getCurrentHourActivityInfo,
+} from '../services/league-bot.service';
 import { processWeekEnd, resetWeeklyXp, getWeekSummary, cleanupOldLeagueWeeks } from '../services/league-weekly-processor.service';
 
 /**
@@ -182,5 +190,173 @@ export const cleanup = async (req: AuthRequest, res: Response) => {
     });
   } catch (error) {
     res.status(500).json({ message: 'Error during cleanup' });
+  }
+};
+
+// ============================================================================
+// TESTING ENDPOINTS - Realistic Bot XP Simulation (Phase 5)
+// ============================================================================
+
+// @desc    Get bot daily progress statistics
+// @route   GET /leagues/admin/bot-progress
+// @access  Private (Admin)
+export const getBotProgress = async (req: AuthRequest, res: Response) => {
+  try {
+    const currentWeek = await getCurrentLeagueWeek();
+    if (!currentWeek) {
+      res.status(404).json({ message: 'No active league week found' });
+      return;
+    }
+
+    const progress = await getBotDailyProgress(currentWeek.id);
+    const activityInfo = getCurrentHourActivityInfo();
+
+    res.status(200).json({
+      weekId: currentWeek.id,
+      currentHour: activityInfo.hour,
+      hourlyActivity: {
+        baseWeight: activityInfo.baseWeight,
+        expectedLevel: activityInfo.expectedActivity,
+      },
+      botProgress: {
+        totalBots: progress.totalBots,
+        botsActive: progress.botsActive,
+        botsSkipping: progress.botsSkipping,
+        botsAtTarget: progress.botsAtTarget,
+        botsNotInitialized: progress.botsNotInitialized,
+        avgProgressPercent: progress.avgProgressPercent,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error getting bot progress' });
+  }
+};
+
+// @desc    Manually trigger daily bot reset (sets daily XP targets)
+// @route   POST /leagues/admin/bot-reset
+// @access  Private (Admin)
+export const triggerBotReset = async (req: AuthRequest, res: Response) => {
+  try {
+    const currentWeek = await getCurrentLeagueWeek();
+    if (!currentWeek) {
+      res.status(404).json({ message: 'No active league week found' });
+      return;
+    }
+
+    const result = await resetDailyBotXp(currentWeek.id);
+
+    res.status(200).json({
+      message: 'Daily bot reset executed successfully',
+      weekId: currentWeek.id,
+      botsReset: result.botsReset,
+      botsSkippingToday: result.botsSkippingToday,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error executing daily bot reset' });
+  }
+};
+
+// @desc    Manually trigger bot habit simulation (incremental XP)
+// @route   POST /leagues/admin/bot-simulate-habits
+// @access  Private (Admin)
+export const triggerBotHabitSimulation = async (req: AuthRequest, res: Response) => {
+  try {
+    const currentWeek = await getCurrentLeagueWeek();
+    if (!currentWeek) {
+      res.status(404).json({ message: 'No active league week found' });
+      return;
+    }
+
+    const activityInfo = getCurrentHourActivityInfo();
+    const result = await simulateBotHabitCompletion(currentWeek.id);
+
+    // Also update positions after simulation
+    const posResult = await updateAllLeaguePositions(currentWeek.id);
+
+    res.status(200).json({
+      message: 'Bot habit simulation executed successfully',
+      weekId: currentWeek.id,
+      simulationTime: {
+        hour: activityInfo.hour,
+        expectedActivityLevel: activityInfo.expectedActivity,
+        baseWeight: activityInfo.baseWeight,
+      },
+      simulationResult: {
+        botsUpdated: result.botsUpdated,
+        totalXpAdded: result.totalXpAdded,
+        botsAtLimit: result.botsAtLimit,
+        botsSkippedByHour: result.botsSkippedByHour,
+      },
+      positionsUpdated: {
+        usersSynced: posResult.usersSynced,
+        groupsUpdated: posResult.groupsUpdated,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error executing bot habit simulation' });
+  }
+};
+
+// @desc    Get current hour activity info (for debugging patterns)
+// @route   GET /leagues/admin/activity-info
+// @access  Private (Admin)
+export const getActivityInfo = async (req: AuthRequest, res: Response) => {
+  try {
+    const activityInfo = getCurrentHourActivityInfo();
+
+    // Generate the full 24-hour activity table for reference
+    const hourlyWeights: Record<number, { weight: number; level: string }> = {};
+    for (let h = 0; h < 24; h++) {
+      // Get base weights directly (same as HOURLY_ACTIVITY_WEIGHTS)
+      const weights: Record<number, number> = {
+        0: 0.05,
+        1: 0.02,
+        2: 0.01,
+        3: 0.01,
+        4: 0.02,
+        5: 0.05,
+        6: 0.3,
+        7: 0.6,
+        8: 0.8,
+        9: 0.5,
+        10: 0.3,
+        11: 0.4,
+        12: 0.7,
+        13: 0.6,
+        14: 0.4,
+        15: 0.3,
+        16: 0.4,
+        17: 0.5,
+        18: 0.7,
+        19: 0.9,
+        20: 1.0,
+        21: 0.8,
+        22: 0.5,
+        23: 0.2,
+      };
+      const weight = weights[h];
+      let level: string;
+      if (weight >= 0.8) level = 'very high';
+      else if (weight >= 0.6) level = 'high';
+      else if (weight >= 0.4) level = 'medium';
+      else if (weight >= 0.2) level = 'low';
+      else level = 'very low';
+
+      hourlyWeights[h] = { weight, level };
+    }
+
+    res.status(200).json({
+      currentHour: activityInfo.hour,
+      currentActivity: {
+        baseWeight: activityInfo.baseWeight,
+        expectedLevel: activityInfo.expectedActivity,
+      },
+      description:
+        'Activity weights determine the probability of bots being active at each hour. ' +
+        'Higher weights mean more bot activity. Peaks are at 8am (0.8), 12pm (0.7), and 8pm (1.0).',
+      hourlyWeights,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error getting activity info' });
   }
 };

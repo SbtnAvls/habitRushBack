@@ -10,7 +10,7 @@ router.use(adminKeyMiddleware);
 // POST /leagues/admin/start-week - Iniciar nueva semana
 router.post('/start-week', leagueAdminController.startWeek);
 
-// POST /leagues/admin/simulate-bots - Simular XP de bots
+// POST /leagues/admin/simulate-bots - Simular XP de bots (LEGACY - full daily XP)
 router.post('/simulate-bots', leagueAdminController.simulateBots);
 
 // POST /leagues/admin/end-week - Procesar fin de semana
@@ -24,5 +24,21 @@ router.post('/update-positions', leagueAdminController.updatePositions);
 
 // DELETE /leagues/admin/cleanup - Limpiar semanas antiguas
 router.delete('/cleanup', leagueAdminController.cleanup);
+
+// ============================================================================
+// TESTING ENDPOINTS - Realistic Bot XP Simulation
+// ============================================================================
+
+// GET /leagues/admin/bot-progress - Ver progreso diario de bots
+router.get('/bot-progress', leagueAdminController.getBotProgress);
+
+// POST /leagues/admin/bot-reset - Ejecutar reset diario (asignar targets)
+router.post('/bot-reset', leagueAdminController.triggerBotReset);
+
+// POST /leagues/admin/bot-simulate-habits - Ejecutar simulacion de habitos
+router.post('/bot-simulate-habits', leagueAdminController.triggerBotHabitSimulation);
+
+// GET /leagues/admin/activity-info - Ver info de actividad por hora
+router.get('/activity-info', leagueAdminController.getActivityInfo);
 
 export default router;
