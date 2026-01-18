@@ -48,7 +48,7 @@ const getCurrentLeague = async (req: AuthRequest, res: Response) => {
     // Filtrar por liga Y grupo
     const [competitorsRows] = await db.query<RowDataPacket[]>(
       `SELECT
-          name,
+          username AS name,
           weekly_xp AS weeklyXp,
           position,
           is_real AS isReal,

@@ -4,9 +4,10 @@ import { PoolConnection } from 'mysql2/promise';
 import { format, subDays } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import { PendingRedemptionModel } from '../models/pending-redemption.model';
+import { PendingValidationModel } from '../models/pending-validation.model';
 import { NotificationModel } from '../models/notification.model';
 import { LifeHistoryModel } from '../models/life-history.model';
-import { onPendingExpired } from './stats.service';
+import { onPendingExpired, onChallengeCompleted } from './stats.service';
 
 export interface HabitEvaluationResult {
   user_id: string;
@@ -179,7 +180,7 @@ export async function evaluateAllUsersDailyHabits(): Promise<HabitEvaluationResu
 
   try {
     // Obtener todos los usuarios activos
-    const [users] = await connection.execute<RowDataPacket[]>('SELECT id FROM USERS WHERE is_active = 1');
+    const [users] = await connection.execute<RowDataPacket[]>('SELECT id FROM USERS');
 
     const results: HabitEvaluationResult[] = [];
     const yesterday = subDays(new Date(), 1);
@@ -476,7 +477,7 @@ export async function evaluateMissedHabitsWithPendingRedemptions(
  * This function should be called daily (e.g., at 00:05)
  */
 export async function evaluateAllUsersWithPendingRedemptions(): Promise<PendingRedemptionResult[]> {
-  const [users] = await pool.query<RowDataPacket[]>('SELECT id FROM USERS WHERE is_active = 1');
+  const [users] = await pool.query<RowDataPacket[]>('SELECT id FROM USERS');
 
   const results: PendingRedemptionResult[] = [];
   const yesterday = subDays(new Date(), 1);
@@ -496,6 +497,10 @@ export async function evaluateAllUsersWithPendingRedemptions(): Promise<PendingR
 /**
  * Process expired pending redemptions
  * Called at the start of daily evaluation - expires pendings from previous days
+ *
+ * IMPORTANT: Before expiring, checks if there's a pending validation in progress.
+ * If so, processes it with AI first to avoid unfairly penalizing users who submitted
+ * proof but haven't been reviewed yet.
  */
 export async function processExpiredPendingRedemptions(): Promise<number> {
   // Get pendings that were created before today (user didn't decide in time)
@@ -503,6 +508,35 @@ export async function processExpiredPendingRedemptions(): Promise<number> {
   let processedCount = 0;
 
   for (const pending of expired) {
+    // CRITICAL FIX: Check if there's a pending validation before expiring
+    const pendingValidation = await PendingValidationModel.findByPendingRedemptionId(pending.id);
+
+    if (pendingValidation && pendingValidation.status === 'pending_review') {
+      // There's a validation waiting to be reviewed - process it with AI first
+      console.info(`[ExpiredRedemptions] Found pending validation for ${pending.id}, processing with AI first`);
+
+      try {
+        // Dynamically import to avoid circular dependency
+        const { processValidationWithAI } = await import('./validation-processor.service');
+        const aiResult = await processValidationWithAI(pendingValidation);
+
+        if (aiResult.is_valid) {
+          // AI approved - the validation processor already resolved the redemption
+          console.info(`[ExpiredRedemptions] AI approved validation for ${pending.id}, skipping expiration`);
+          processedCount++;
+          continue; // Skip expiration - user successfully completed challenge
+        }
+        // AI rejected - continue with expiration below
+        console.info(`[ExpiredRedemptions] AI rejected validation for ${pending.id}, proceeding with expiration`);
+      } catch (error) {
+        console.error(`[ExpiredRedemptions] Error processing validation for ${pending.id}:`, error);
+        // If AI fails, give benefit of the doubt and skip this redemption for now
+        // It will be retried next cycle
+        continue;
+      }
+    }
+
+    // No pending validation or validation was rejected - proceed with expiration
     const connection = await pool.getConnection();
 
     try {
@@ -548,8 +582,8 @@ export async function processExpiredPendingRedemptions(): Promise<number> {
         {
           user_id: pending.user_id,
           type: 'life_warning',
-          title: 'Redenci\u00f3n expirada',
-          message: `El tiempo para redimir tu h\u00e1bito fallado expir\u00f3. Perdiste 1 vida. Vidas restantes: ${currentLives}`,
+          title: 'Redención expirada',
+          message: `El tiempo para redimir tu hábito fallado expiró. Perdiste 1 vida. Vidas restantes: ${currentLives}`,
           related_habit_id: pending.habit_id,
         },
         connection,

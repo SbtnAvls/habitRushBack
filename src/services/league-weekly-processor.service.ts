@@ -144,7 +144,7 @@ async function getLeagueGroupCompetitors(
   const queryFn = connection || db;
   const [rows] = await queryFn.query<RowDataPacket[]>(
     `SELECT
-       id, user_id as userId, name, weekly_xp as weeklyXp,
+       id, user_id as userId, username AS name, weekly_xp as weeklyXp,
        position, is_real as isReal, league_id as leagueId, league_group as leagueGroup
      FROM LEAGUE_COMPETITORS
      WHERE league_week_id = ? AND league_id = ? AND league_group = ?

@@ -280,6 +280,14 @@ CREATE TABLE LEAGUES (
   CONSTRAINT chk_leagues_level CHECK (level BETWEEN 1 AND 5)
 );
 
+-- Seed data for LEAGUES (required for league system to work)
+INSERT INTO LEAGUES (id, name, color_hex, level) VALUES
+  (1, 'Bronze', '#CD7F32', 1),
+  (2, 'Silver', '#C0C0C0', 2),
+  (3, 'Gold', '#FFD700', 3),
+  (4, 'Diamond', '#B9F2FF', 4),
+  (5, 'Master', '#9966CC', 5);
+
 -- LEAGUE WEEKS
 CREATE TABLE LEAGUE_WEEKS (
   id INT AUTO_INCREMENT PRIMARY KEY,

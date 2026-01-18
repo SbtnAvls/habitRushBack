@@ -1,5 +1,5 @@
 import { getCurrentLeagueWeek, startNewLeagueWeek } from './league-management.service';
-import { simulateDailyBotXp, updateAllLeaguePositions } from './league-bot.service';
+import { simulateDailyBotXp, updateAllLeaguePositions, fillAllLeaguesWithBots } from './league-bot.service';
 import { processWeekEnd, resetWeeklyXp, cleanupOldLeagueWeeks } from './league-weekly-processor.service';
 
 /**
@@ -260,6 +260,7 @@ export class LeagueSchedulerService {
 
   /**
    * Start a new league week (Monday morning)
+   * Complete flow: create week -> distribute users -> fill with bots -> update positions
    */
   private async runStartWeek(): Promise<void> {
     try {
@@ -284,6 +285,7 @@ export class LeagueSchedulerService {
         }
       }
 
+      // 1. Create week and distribute users
       const result = await startNewLeagueWeek(monday);
       console.warn(
         `[LeagueScheduler] New week started: ID=${result.weekId}, ${result.distributed} users distributed`,
@@ -295,6 +297,15 @@ export class LeagueSchedulerService {
           console.warn(`[LeagueScheduler]   League ${leagueId}: ${stats.users} users in ${stats.groups} groups`);
         }
       }
+
+      // 2. Fill all league groups with bots
+      const botsResult = await fillAllLeaguesWithBots(result.weekId);
+      console.warn(`[LeagueScheduler] Bots created: ${botsResult.totalCreated} bots in ${botsResult.byLeagueGroup.length} groups`);
+
+      // 3. Update initial positions
+      const posResult = await updateAllLeaguePositions(result.weekId);
+      console.warn(`[LeagueScheduler] Initial positions set: ${posResult.usersSynced} users, ${posResult.groupsUpdated} groups`);
+
     } catch (error) {
       console.error('[LeagueScheduler] Error starting new week:', error);
     }

@@ -106,7 +106,7 @@ async function fillLeagueGroupWithBotsTx(
 ): Promise<number> {
   // Lock: SELECT FOR UPDATE para prevenir race condition
   const [lockRows] = await connection.query<RowDataPacket[]>(
-    `SELECT COUNT(*) as count, GROUP_CONCAT(name) as names
+    `SELECT COUNT(*) as count, GROUP_CONCAT(username) as names
      FROM LEAGUE_COMPETITORS
      WHERE league_week_id = ? AND league_id = ? AND league_group = ?
      FOR UPDATE`,
@@ -156,7 +156,7 @@ async function fillLeagueGroupWithBotsTx(
   if (botsToInsert.length > 0) {
     await connection.query(
       `INSERT INTO LEAGUE_COMPETITORS
-       (id, league_week_id, league_id, league_group, user_id, name, weekly_xp, position, is_real, bot_profile)
+       (id, league_week_id, league_id, league_group, user_id, username, weekly_xp, position, is_real, bot_profile)
        VALUES ?`,
       [botsToInsert]
     );
@@ -273,6 +273,15 @@ export async function updateLeagueGroupPositions(
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
+    // Estrategia de dos pasos para evitar conflictos con el constraint único
+    // Paso 1: Mover a posiciones negativas
+    await connection.query(
+      `UPDATE LEAGUE_COMPETITORS
+       SET position = -position
+       WHERE league_week_id = ? AND league_id = ? AND league_group = ?`,
+      [leagueWeekId, leagueId, leagueGroup]
+    );
+    // Paso 2: Asignar posiciones correctas
     await connection.query('SET @pos = 0');
     await connection.query(
       `UPDATE LEAGUE_COMPETITORS
@@ -326,7 +335,19 @@ export async function updateAllLeaguePositions(
     const groups = await getAllLeagueGroups(connection, leagueWeekId);
 
     // 3. Actualizar posiciones por grupo (dentro de la misma transacción)
+    // Estrategia de dos pasos para evitar conflictos con el constraint único:
+    // Paso 1: Mover todas las posiciones a valores negativos (temporales)
+    // Paso 2: Asignar las posiciones finales correctas
     for (const { leagueId, leagueGroup } of groups) {
+      // Paso 1: Mover a posiciones negativas (evita conflicto)
+      await connection.query(
+        `UPDATE LEAGUE_COMPETITORS
+         SET position = -position
+         WHERE league_week_id = ? AND league_id = ? AND league_group = ?`,
+        [leagueWeekId, leagueId, leagueGroup]
+      );
+
+      // Paso 2: Asignar posiciones correctas usando variable de usuario
       await connection.query('SET @pos = 0');
       await connection.query(
         `UPDATE LEAGUE_COMPETITORS
