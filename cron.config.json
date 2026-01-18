@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "HabitRush Backend - CronJob Configuration",
+  "version": "1.0.0",
+  "timezone": "America/Mexico_City",
+  "baseUrl": "${API_BASE_URL}",
+  "headers": {
+    "X-Admin-Key": "${ADMIN_API_KEY}",
+    "Content-Type": "application/json"
+  },
+  "jobs": {
+    "daily": [
+      {
+        "id": "simulate-bots-xp",
+        "name": "Simulate Bot XP",
+        "description": "Simulates daily XP gains for bot users in leagues to maintain realistic competition",
+        "schedule": "5 0 * * *",
+        "scheduleDescription": "Daily at 00:05",
+        "endpoint": "/leagues/admin/simulate-bots",
+        "method": "POST",
+        "priority": "high",
+        "timeout": 60000,
+        "retries": 3
+      },
+      {
+        "id": "update-league-positions",
+        "name": "Update League Positions",
+        "description": "Syncs real user XP and updates rankings in all league groups",
+        "schedule": "0 8 * * *",
+        "scheduleDescription": "Daily at 08:00",
+        "endpoint": "/leagues/admin/update-positions",
+        "method": "POST",
+        "priority": "medium",
+        "timeout": 120000,
+        "retries": 3
+      }
+    ],
+    "weekly": [
+      {
+        "id": "end-league-week",
+        "name": "End League Week",
+        "description": "Processes end of week - calculates promotions/demotions and updates user leagues",
+        "schedule": "55 23 * * 0",
+        "scheduleDescription": "Every Sunday at 23:55",
+        "endpoint": "/leagues/admin/end-week",
+        "method": "POST",
+        "priority": "critical",
+        "timeout": 300000,
+        "retries": 5,
+        "notes": "Must run BEFORE start-league-week. Idempotent - safe to retry."
+      },
+      {
+        "id": "start-league-week",
+        "name": "Start New League Week",
+        "description": "Starts a new league week, distributes users into groups",
+        "schedule": "0 0 * * 1",
+        "scheduleDescription": "Every Monday at 00:00",
+        "endpoint": "/leagues/admin/start-week",
+        "method": "POST",
+        "priority": "critical",
+        "timeout": 300000,
+        "retries": 5,
+        "notes": "Must run AFTER end-league-week from previous day."
+      }
+    ],
+    "monthly": [
+      {
+        "id": "cleanup-old-league-weeks",
+        "name": "Cleanup Old League Weeks",
+        "description": "Removes old league week data to optimize database performance",
+        "schedule": "0 3 1 * *",
+        "scheduleDescription": "First day of month at 03:00",
+        "endpoint": "/leagues/admin/cleanup?weeksToKeep=12",
+        "method": "DELETE",
+        "priority": "low",
+        "timeout": 180000,
+        "retries": 2
+      }
+    ]
+  },
+  "internalSchedulers": {
+    "description": "These services run automatically when the app starts (no external cron needed)",
+    "services": [
+      {
+        "id": "daily-evaluation",
+        "name": "Daily Habit Evaluation",
+        "file": "src/services/daily-evaluation.service.ts",
+        "function": "startWithPendingRedemptions()",
+        "schedules": [
+          {
+            "task": "Evaluate missed habits and create pending redemptions",
+            "time": "00:05 daily"
+          },
+          {
+            "task": "Notify users about expiring redemptions",
+            "time": "Every hour"
+          }
+        ]
+      },
+      {
+        "id": "validation-processor",
+        "name": "AI Validation Processor",
+        "file": "src/services/validation-processor.service.ts",
+        "function": "start(300000)",
+        "schedules": [
+          {
+            "task": "Process expired validations with AI",
+            "time": "Every 5 minutes"
+          },
+          {
+            "task": "Cleanup old validations (>30 days)",
+            "time": "Every 24 hours"
+          }
+        ]
+      }
+    ]
+  },
+  "healthCheck": {
+    "endpoint": "/health",
+    "method": "GET",
+    "expectedStatus": 200,
+    "interval": "*/5 * * * *",
+    "intervalDescription": "Every 5 minutes"
+  }
+}

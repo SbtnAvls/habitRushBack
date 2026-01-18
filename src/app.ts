@@ -11,16 +11,26 @@ import notificationRoutes from './routes/notification.routes';
 import pendingRedemptionRoutes from './routes/pending-redemption.routes';
 import revivalRoutes from './routes/revival.routes';
 import categoryRoutes from './routes/category.routes';
+import adminRoutes from './routes/admin.routes';
+import socialRoutes from './routes/social.routes';
 import { dailyEvaluationService } from './services/daily-evaluation.service';
+import { validationProcessorService } from './services/validation-processor.service';
+import { leagueSchedulerService } from './services/league-scheduler.service';
 import { setupSwagger } from './swagger';
 
 import express, { Application, Request, Response } from 'express';
+import cors from 'cors';
+import path from 'path';
 
 const app: Application = express();
 const port: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // Middlewares
+app.use(cors()); // Enable CORS for all origins
 app.use(express.json());
+
+// Serve uploaded proof images (for admin dashboard)
+app.use('/uploads/proofs', express.static(path.join(process.cwd(), 'uploads', 'proofs')));
 
 // Swagger Documentation
 setupSwagger(app);
@@ -39,6 +49,8 @@ app.use('/notifications', notificationRoutes);
 app.use('/pending-redemptions', pendingRedemptionRoutes);
 app.use('/revival', revivalRoutes);
 app.use('/categories', categoryRoutes);
+app.use('/admin', adminRoutes);
+app.use('/social', socialRoutes);
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Welcome to HabitRush API!');
@@ -53,6 +65,14 @@ app.listen(port, () => {
   if (process.env.NODE_ENV !== 'test') {
     console.warn('Starting daily evaluation service with pending redemptions...');
     dailyEvaluationService.startWithPendingRedemptions();
+
+    // Start validation processor service (processes expired validations every 5 min)
+    console.warn('Starting validation processor service...');
+    validationProcessorService.start(5 * 60 * 1000); // Every 5 minutes
+
+    // Start league scheduler service (bot XP, positions, weekly processing)
+    console.warn('Starting league scheduler service...');
+    leagueSchedulerService.start();
 
     // Opcional: Ejecutar inmediatamente en desarrollo para pruebas
     if (process.env.NODE_ENV === 'development') {

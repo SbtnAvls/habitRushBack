@@ -1,4 +1,13 @@
 node_modules
 dist
 .env
+crontab.local
 coverage
+
+# Uploaded files (keep directory structure with .gitkeep)
+uploads/**/*
+!uploads/**/.gitkeep
+
+# PM2 logs (keep directory structure with .gitkeep)
+logs/**/*
+!logs/**/.gitkeep

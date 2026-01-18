@@ -5,6 +5,7 @@
   "scripts": {
     "start": "node dist/app.js",
     "build": "tsc",
+    "deploy": "npm run build && pm2 restart habitrush-api",
     "dev": "nodemon",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -33,7 +34,7 @@
     "mysql2": "^3.15.2",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
-    "uuid": "^13.0.0"
+    "uuid": "^9.0.1"
   },
   "lint-staged": {
     "src/**/*.ts": [
@@ -53,7 +54,7 @@
     "@types/supertest": "^6.0.3",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
-    "@types/uuid": "^10.0.0",
+    "@types/uuid": "^9.0.8",
     "@typescript-eslint/eslint-plugin": "^8.49.0",
     "@typescript-eslint/parser": "^8.49.0",
     "eslint": "^9.39.2",

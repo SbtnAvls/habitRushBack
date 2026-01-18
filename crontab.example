@@ -1,0 +1,103 @@
+# =============================================================================
+# HabitRush Backend - Crontab Configuration
+# =============================================================================
+#
+# SETUP INSTRUCTIONS:
+# 1. Copy this file: cp crontab.example crontab.local
+# 2. Edit crontab.local and replace the environment variables:
+#    - API_BASE_URL: Your API base URL (e.g., https://api.habitrush.com)
+#    - ADMIN_API_KEY: Your admin API key
+# 3. Install the crontab: crontab crontab.local
+#
+# CRON FORMAT:
+# ┌───────────── minute (0-59)
+# │ ┌───────────── hour (0-23)
+# │ │ ┌───────────── day of month (1-31)
+# │ │ │ ┌───────────── month (1-12)
+# │ │ │ │ ┌───────────── day of week (0-6, Sunday=0)
+# │ │ │ │ │
+# * * * * * command
+# =============================================================================
+
+# Environment variables (replace with actual values)
+API_BASE_URL=https://api.habitrush.com
+ADMIN_API_KEY=your-admin-api-key-here
+LOG_DIR=/var/log/habitrush
+
+# =============================================================================
+# DAILY JOBS
+# =============================================================================
+
+# Simulate Bot XP - Daily at 00:05
+# Simulates daily XP gains for bot users in leagues
+5 0 * * * curl -s -X POST "${API_BASE_URL}/leagues/admin/simulate-bots" \
+    -H "X-Admin-Key: ${ADMIN_API_KEY}" \
+    -H "Content-Type: application/json" \
+    >> ${LOG_DIR}/simulate-bots.log 2>&1
+
+# Update League Positions - Daily at 08:00
+# Syncs real user XP and updates rankings
+0 8 * * * curl -s -X POST "${API_BASE_URL}/leagues/admin/update-positions" \
+    -H "X-Admin-Key: ${ADMIN_API_KEY}" \
+    -H "Content-Type: application/json" \
+    >> ${LOG_DIR}/update-positions.log 2>&1
+
+# =============================================================================
+# WEEKLY JOBS
+# =============================================================================
+
+# End League Week - Every Sunday at 23:55
+# CRITICAL: Must run before start-league-week
+# Processes promotions/demotions
+55 23 * * 0 curl -s -X POST "${API_BASE_URL}/leagues/admin/end-week" \
+    -H "X-Admin-Key: ${ADMIN_API_KEY}" \
+    -H "Content-Type: application/json" \
+    >> ${LOG_DIR}/end-week.log 2>&1
+
+# Start New League Week - Every Monday at 00:00
+# CRITICAL: Must run after end-league-week
+# Initializes new week and distributes users
+0 0 * * 1 curl -s -X POST "${API_BASE_URL}/leagues/admin/start-week" \
+    -H "X-Admin-Key: ${ADMIN_API_KEY}" \
+    -H "Content-Type: application/json" \
+    >> ${LOG_DIR}/start-week.log 2>&1
+
+# =============================================================================
+# MONTHLY JOBS
+# =============================================================================
+
+# Cleanup Old League Weeks - First day of month at 03:00
+# Removes league data older than 12 weeks
+0 3 1 * * curl -s -X DELETE "${API_BASE_URL}/leagues/admin/cleanup?weeksToKeep=12" \
+    -H "X-Admin-Key: ${ADMIN_API_KEY}" \
+    >> ${LOG_DIR}/cleanup.log 2>&1
+
+# =============================================================================
+# HEALTH CHECK (Optional)
+# =============================================================================
+
+# Health Check - Every 5 minutes
+# Monitors API availability
+*/5 * * * * curl -s -o /dev/null -w "%{http_code}" "${API_BASE_URL}/health" \
+    | grep -q "200" || echo "[$(date)] Health check failed" >> ${LOG_DIR}/health.log
+
+# =============================================================================
+# LOG ROTATION (Optional - prevents log files from growing too large)
+# =============================================================================
+
+# Rotate logs weekly - Every Sunday at 00:00
+0 0 * * 0 find ${LOG_DIR} -name "*.log" -size +10M -exec truncate -s 0 {} \;
+
+# =============================================================================
+# NOTES:
+# =============================================================================
+#
+# INTERNAL SCHEDULERS (no cron needed - run automatically in app):
+# - Daily Habit Evaluation: Runs at 00:05 daily (src/services/daily-evaluation.service.ts)
+# - Hourly Notifications: Runs every hour for expiring redemptions
+# - AI Validation Processor: Runs every 5 minutes (src/services/validation-processor.service.ts)
+# - Validation Cleanup: Runs every 24 hours for old validations
+#
+# These internal schedulers start automatically when the app starts.
+# See app.ts lines 64-78 for implementation details.
+# =============================================================================
