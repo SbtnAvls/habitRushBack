@@ -33,6 +33,18 @@
         "priority": "medium",
         "timeout": 120000,
         "retries": 3
+      },
+      {
+        "id": "cleanup-inactive-habits",
+        "name": "Cleanup Inactive Habits",
+        "description": "Deletes habits that have been inactive (disabled) for more than 7 days",
+        "schedule": "20 0 * * *",
+        "scheduleDescription": "Daily at 00:20",
+        "endpoint": "/habits/admin/cleanup-inactive?days=7",
+        "method": "POST",
+        "priority": "low",
+        "timeout": 60000,
+        "retries": 2
       }
     ],
     "weekly": [

@@ -24,9 +24,28 @@ export interface UserLifeChallengeStatus {
  */
 const verificationFunctions: { [key: string]: (userId: string, connection: PoolConnection) => Promise<boolean> } = {
   // Mantén un hábito durante una semana completa sin perder vidas
+  // Evalúa la SEMANA ANTERIOR completa para evitar falsos positivos
   verifyWeekWithoutLosingLives: async (userId: string, connection: PoolConnection) => {
-    const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
-    const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
+    const today = new Date();
+    const currentWeekStart = startOfWeek(today, { weekStartsOn: 1 });
+
+    // Evaluar la semana anterior (ya completada)
+    const lastWeekStart = subDays(currentWeekStart, 7);
+    const lastWeekEnd = subDays(currentWeekStart, 1);
+
+    // Verificar que el usuario tenía al menos un hábito activo durante esa semana
+    const [habits] = await connection.execute<RowDataPacket[]>(
+      `SELECT COUNT(*) as habit_count
+       FROM HABITS
+       WHERE user_id = UUID_TO_BIN(?)
+       AND is_active = 1
+       AND start_date <= ?`,
+      [userId, format(lastWeekStart, 'yyyy-MM-dd')],
+    );
+
+    if ((habits[0].habit_count as number) === 0) {
+      return false;
+    }
 
     const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as lost_lives_count
@@ -34,26 +53,35 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
        WHERE user_id = UUID_TO_BIN(?)
        AND reason = 'habit_missed'
        AND created_at BETWEEN ? AND ?`,
-      [userId, format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd')],
+      [userId, format(lastWeekStart, 'yyyy-MM-dd'), format(lastWeekEnd, 'yyyy-MM-dd 23:59:59')],
     );
 
-    // También verificar que haya al menos un hábito activo
-    const [habits] = await connection.execute<RowDataPacket[]>(
-      `SELECT COUNT(*) as habit_count
-       FROM HABITS
-       WHERE user_id = UUID_TO_BIN(?)
-       AND is_active = 1
-       AND start_date <= CURDATE()`,
-      [userId],
-    );
-
-    return (result[0].lost_lives_count as number) === 0 && (habits[0].habit_count as number) > 0;
+    return (result[0].lost_lives_count as number) === 0;
   },
 
   // Mantén un hábito durante un mes completo sin perder vidas
+  // Evalúa el MES ANTERIOR completo para evitar falsos positivos
   verifyMonthWithoutLosingLives: async (userId: string, connection: PoolConnection) => {
-    const monthStart = startOfMonth(new Date());
-    const monthEnd = endOfMonth(new Date());
+    const today = new Date();
+    const currentMonthStart = startOfMonth(today);
+
+    // Evaluar el mes anterior (ya completado)
+    const lastMonthStart = startOfMonth(subDays(currentMonthStart, 1));
+    const lastMonthEnd = endOfMonth(lastMonthStart);
+
+    // Verificar que el usuario tenía al menos un hábito activo durante ese mes
+    const [habits] = await connection.execute<RowDataPacket[]>(
+      `SELECT COUNT(*) as habit_count
+       FROM HABITS
+       WHERE user_id = UUID_TO_BIN(?)
+       AND is_active = 1
+       AND start_date <= ?`,
+      [userId, format(lastMonthStart, 'yyyy-MM-dd')],
+    );
+
+    if ((habits[0].habit_count as number) === 0) {
+      return false;
+    }
 
     const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as lost_lives_count
@@ -61,19 +89,10 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
        WHERE user_id = UUID_TO_BIN(?)
        AND reason = 'habit_missed'
        AND created_at BETWEEN ? AND ?`,
-      [userId, format(monthStart, 'yyyy-MM-dd'), format(monthEnd, 'yyyy-MM-dd')],
+      [userId, format(lastMonthStart, 'yyyy-MM-dd'), format(lastMonthEnd, 'yyyy-MM-dd 23:59:59')],
     );
 
-    const [habits] = await connection.execute<RowDataPacket[]>(
-      `SELECT COUNT(*) as habit_count
-       FROM HABITS
-       WHERE user_id = UUID_TO_BIN(?)
-       AND is_active = 1
-       AND start_date <= DATE_SUB(CURDATE(), INTERVAL 30 DAY)`,
-      [userId],
-    );
-
-    return (result[0].lost_lives_count as number) === 0 && (habits[0].habit_count as number) > 0;
+    return (result[0].lost_lives_count as number) === 0;
   },
 
   // Completa un hábito faltando menos de 1 hora para acabar el día
@@ -90,14 +109,14 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
     return (result[0].late_completions as number) > 0;
   },
 
-  // Registra progreso de un hábito antes de la 1 AM
+  // Registra progreso de un hábito antes de las 6 AM
   verifyEarlyBird: async (userId: string, connection: PoolConnection) => {
     const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as early_completions
        FROM HABIT_COMPLETIONS
        WHERE user_id = UUID_TO_BIN(?)
        AND completed = 1
-       AND TIME(completed_at) <= '01:00:00'`,
+       AND TIME(completed_at) <= '06:00:00'`,
       [userId],
     );
 
@@ -105,15 +124,21 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
   },
 
   // Completa al menos 3 hábitos durante una semana completa sin faltar
+  // Evalúa la SEMANA ANTERIOR completa para evitar falsos positivos
   verifyThreeHabitsWeek: async (userId: string, connection: PoolConnection) => {
-    const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
-    const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
+    const today = new Date();
+    const currentWeekStart = startOfWeek(today, { weekStartsOn: 1 });
+
+    // Evaluar la semana anterior (ya completada)
+    const lastWeekStart = subDays(currentWeekStart, 7);
+    const lastWeekEnd = subDays(currentWeekStart, 1);
 
     const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(DISTINCT h.id) as completed_habits
        FROM HABITS h
        WHERE h.user_id = UUID_TO_BIN(?)
        AND h.is_active = 1
+       AND h.start_date <= ?
        AND NOT EXISTS (
          SELECT 1 FROM (
            SELECT DATE(DATE_ADD(?, INTERVAL seq.seq DAY)) as check_date
@@ -130,7 +155,7 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
          )
          AND dates.check_date BETWEEN ? AND ?
        )`,
-      [userId, format(weekStart, 'yyyy-MM-dd'), format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd')],
+      [userId, format(lastWeekStart, 'yyyy-MM-dd'), format(lastWeekStart, 'yyyy-MM-dd'), format(lastWeekStart, 'yyyy-MM-dd'), format(lastWeekEnd, 'yyyy-MM-dd')],
     );
 
     return (result[0].completed_habits as number) >= 3;
@@ -174,6 +199,26 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
   // No te quedes sin vidas durante 2 meses seguidos
   verifyTwoMonthsAlive: async (userId: string, connection: PoolConnection) => {
     const twoMonthsAgo = subDays(new Date(), 60);
+
+    // Verificar que la cuenta tenga al menos 60 días de antigüedad
+    const [accountAge] = await connection.execute<RowDataPacket[]>(
+      `SELECT created_at FROM USERS WHERE id = UUID_TO_BIN(?)`,
+      [userId],
+    );
+
+    if (accountAge.length === 0) {
+      return false;
+    }
+
+    const accountCreatedAt = new Date(accountAge[0].created_at);
+    const daysSinceCreation = Math.floor(
+      (new Date().getTime() - accountCreatedAt.getTime()) / (1000 * 60 * 60 * 24),
+    );
+
+    // La cuenta debe tener al menos 60 días
+    if (daysSinceCreation < 60) {
+      return false;
+    }
 
     const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as zero_lives_moments
@@ -333,7 +378,7 @@ export async function getUserLifeChallengeStatuses(userId: string): Promise<User
 export async function redeemLifeChallengeWithValidation(
   userId: string,
   lifeChallengeId: string,
-): Promise<{ success: boolean; message: string; livesGained?: number }> {
+): Promise<{ success: boolean; message: string; livesGained?: number; code?: string }> {
   const connection = await pool.getConnection();
 
   try {
@@ -368,18 +413,45 @@ export async function redeemLifeChallengeWithValidation(
       [userId],
     );
 
-    const currentLives = users[0].lives;
-    const maxLives = users[0].max_lives;
-    const newLives = Math.min(currentLives + challengeStatus.reward, maxLives);
-    const actualLivesGained = newLives - currentLives;
+    const currentLives = users[0].lives as number;
+    const maxLives = users[0].max_lives as number;
+    const availableSlots = maxLives - currentLives;
+    const reward = challengeStatus.reward;
 
-    if (actualLivesGained === 0) {
+    // 2.1 Si el usuario está muerto (0 vidas), NO puede redimir Life Challenges
+    // Debe completar los retos de resurrección que requieren validación manual
+    if (currentLives === 0) {
+      await connection.rollback();
+      return {
+        success: false,
+        message: 'No puedes redimir retos mientras estás sin vidas. Completa un reto de resurrección para revivir.',
+        code: 'USER_DEAD',
+      };
+    }
+
+    // 2.2 Si ya tiene el máximo de vidas, no puede redimir
+    if (availableSlots === 0) {
       await connection.rollback();
       return {
         success: false,
         message: 'Ya tienes el máximo de vidas posibles',
       };
     }
+
+    // 2.2 Para retos tipo 'once': NO permitir si no hay espacio suficiente
+    // (para no desperdiciar un reto que solo se puede redimir una vez)
+    if (challengeStatus.redeemable_type === 'once' && availableSlots < reward) {
+      await connection.rollback();
+      return {
+        success: false,
+        message: `Necesitas ${reward} casillas de vida disponibles para redimir este reto. Actualmente tienes ${availableSlots} casilla(s) disponible(s). Aumenta tu máximo de vidas para no perder recompensa.`,
+        code: 'INSUFFICIENT_LIFE_SLOTS',
+      };
+    }
+
+    // 2.3 Para retos 'unlimited': permitir redención parcial (el front ya preguntó al usuario)
+    const newLives = Math.min(currentLives + reward, maxLives);
+    const actualLivesGained = newLives - currentLives;
 
     // 3. Actualizar vidas del usuario
     await connection.execute('UPDATE USERS SET lives = ? WHERE id = UUID_TO_BIN(?)', [newLives, userId]);
@@ -388,7 +460,7 @@ export async function redeemLifeChallengeWithValidation(
     if (currentLives === 0 && newLives > 0) {
       await connection.execute(
         `UPDATE HABITS
-         SET is_active = 1, disabled_reason = NULL
+         SET is_active = 1, disabled_at = NULL, disabled_reason = NULL
          WHERE user_id = UUID_TO_BIN(?)
          AND disabled_reason = 'no_lives'
          AND deleted_at IS NULL`,

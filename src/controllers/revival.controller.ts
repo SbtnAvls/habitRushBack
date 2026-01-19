@@ -121,6 +121,7 @@ export class RevivalController {
         `UPDATE HABITS
          SET current_streak = 0,
              is_active = 1,
+             disabled_at = NULL,
              disabled_reason = NULL
          WHERE user_id = ?
          AND disabled_reason = 'no_lives'
@@ -236,6 +237,7 @@ export class RevivalController {
       await connection.query(
         `UPDATE HABITS
          SET is_active = 1,
+             disabled_at = NULL,
              disabled_reason = NULL
          WHERE user_id = ?
          AND disabled_reason = 'no_lives'

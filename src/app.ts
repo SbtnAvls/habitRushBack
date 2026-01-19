@@ -7,6 +7,7 @@ import imageRoutes from './routes/image.routes';
 import lifeChallengeRoutes from './routes/life-challenge.routes';
 import leagueRoutes from './routes/league.routes';
 import leagueAdminRoutes from './routes/league-admin.routes';
+import habitAdminRoutes from './routes/habit-admin.routes';
 import notificationRoutes from './routes/notification.routes';
 import pendingRedemptionRoutes from './routes/pending-redemption.routes';
 import revivalRoutes from './routes/revival.routes';
@@ -35,7 +36,8 @@ app.use('/uploads/proofs', express.static(path.join(process.cwd(), 'uploads', 'p
 // Swagger Documentation
 setupSwagger(app);
 
-// Routes
+// Routes (admin routes must come before their base routes)
+app.use('/habits/admin', habitAdminRoutes);
 app.use('/habits', habitRoutes);
 app.use('/auth', authRoutes);
 app.use('/users', userRoutes);
