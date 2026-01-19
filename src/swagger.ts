@@ -46,12 +46,12 @@ Los endpoints de autenticación tienen limitación de tasa para prevenir abusos.
       // Auth Schemas
       RegisterRequest: {
         type: 'object',
-        required: ['name', 'email', 'password'],
+        required: ['username', 'email', 'password'],
         properties: {
-          name: {
+          username: {
             type: 'string',
-            example: 'Juan Pérez',
-            description: 'Nombre del usuario',
+            example: 'juanperez',
+            description: 'Nombre de usuario (único)',
           },
           email: {
             type: 'string',
@@ -252,6 +252,13 @@ Los endpoints de autenticación tienen limitación de tasa para prevenir abusos.
             type: 'string',
             enum: ['yes_no', 'time', 'count'],
           },
+          target_value: {
+            type: 'integer',
+            nullable: true,
+            description:
+              'Valor objetivo/mínimo para hábitos de tiempo (minutos) o cantidad. NULL para hábitos yes_no.',
+            example: 30,
+          },
           is_active: {
             type: 'boolean',
           },
@@ -296,6 +303,11 @@ Los endpoints de autenticación tienen limitación de tasa para prevenir abusos.
             type: 'string',
             example: '30 minutos de cardio',
           },
+          category_id: {
+            type: 'string',
+            example: 'health',
+            description: 'ID de la categoría del hábito',
+          },
           target_date: {
             type: 'string',
             format: 'date',
@@ -319,6 +331,13 @@ Los endpoints de autenticación tienen limitación de tasa para prevenir abusos.
             type: 'string',
             enum: ['yes_no', 'time', 'count'],
           },
+          target_value: {
+            type: 'integer',
+            minimum: 1,
+            description:
+              'REQUERIDO para hábitos tipo "time" (minutos) o "count" (cantidad). No enviar para "yes_no".',
+            example: 30,
+          },
         },
       },
       UpdateHabitRequest: {
@@ -329,6 +348,10 @@ Los endpoints de autenticación tienen limitación de tasa para prevenir abusos.
           },
           description: {
             type: 'string',
+          },
+          category_id: {
+            type: 'string',
+            description: 'ID de la categoría del hábito',
           },
           target_date: {
             type: 'string',
@@ -347,6 +370,13 @@ Los endpoints de autenticación tienen limitación de tasa para prevenir abusos.
           progress_type: {
             type: 'string',
             enum: ['yes_no', 'time', 'count'],
+          },
+          target_value: {
+            type: 'integer',
+            minimum: 1,
+            nullable: true,
+            description:
+              'Valor objetivo para hábitos tipo "time" (minutos) o "count" (cantidad). Se ignora para "yes_no".',
           },
         },
       },
@@ -1514,6 +1544,14 @@ Los endpoints de autenticación tienen limitación de tasa para prevenir abusos.
                   },
                   invalidProgress: {
                     value: { message: 'Invalid progress_type provided' },
+                  },
+                  missingTargetValue: {
+                    value: { message: 'target_value is required for time habits' },
+                    summary: 'Falta target_value para hábitos de tiempo o cantidad',
+                  },
+                  invalidTargetValue: {
+                    value: { message: 'target_value must be a positive number' },
+                    summary: 'target_value debe ser un número positivo',
                   },
                 },
               },

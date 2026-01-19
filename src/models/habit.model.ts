@@ -14,6 +14,7 @@ export interface Habit {
   frequency_type: 'daily' | 'weekly' | 'custom';
   frequency_days_of_week?: string; // Stored as a comma-separated string
   progress_type: 'yes_no' | 'time' | 'count';
+  target_value?: number | null; // Required for 'time' (minutes) and 'count' habits, NULL for 'yes_no'
   is_active: boolean;
   active_by_user: number;
   last_completed_date?: Date;

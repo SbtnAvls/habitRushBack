@@ -57,8 +57,16 @@ export const createHabit = async (req: AuthRequest, res: Response) => {
   if (!userId) {
     return res.status(401).json({ message: 'Not authenticated' });
   }
-  const { name, description, category_id, target_date, frequency_type, frequency_days_of_week, progress_type } =
-    req.body;
+  const {
+    name,
+    description,
+    category_id,
+    target_date,
+    frequency_type,
+    frequency_days_of_week,
+    progress_type,
+    target_value,
+  } = req.body;
 
   try {
     if (!name || !frequency_type || !progress_type) {
@@ -73,6 +81,28 @@ export const createHabit = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: 'Invalid progress_type provided' });
     }
 
+    // Validate target_value based on progress_type
+    let validatedTargetValue: number | null = null;
+
+    if (progress_type === 'time' || progress_type === 'count') {
+      // For time and count habits, target_value is required
+      if (target_value === undefined || target_value === null) {
+        return res.status(400).json({
+          message: `target_value is required for ${progress_type} habits`,
+        });
+      }
+
+      const numericValue = Number(target_value);
+      if (isNaN(numericValue) || numericValue <= 0) {
+        return res.status(400).json({
+          message: 'target_value must be a positive number',
+        });
+      }
+
+      validatedTargetValue = numericValue;
+    }
+    // For yes_no habits, target_value should be null (ignored if provided)
+
     const newHabit = await habitModel.createHabit({
       user_id: userId,
       name,
@@ -84,11 +114,13 @@ export const createHabit = async (req: AuthRequest, res: Response) => {
       frequency_type,
       frequency_days_of_week: Array.isArray(frequency_days_of_week) ? frequency_days_of_week.join(',') : undefined,
       progress_type,
+      target_value: validatedTargetValue,
       is_active: true,
       active_by_user: 1,
     });
     res.status(201).json(newHabit);
-  } catch (_error) {
+  } catch (error) {
+    console.error('[CreateHabit] Error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -131,6 +163,34 @@ export const updateHabit = async (req: AuthRequest, res: Response) => {
 
     if (updates.progress_type && !ALLOWED_PROGRESS_TYPES.includes(updates.progress_type)) {
       return res.status(400).json({ message: 'Invalid progress_type provided' });
+    }
+
+    // Validate target_value if provided
+    if (updates.target_value !== undefined) {
+      const effectiveProgressType = updates.progress_type || habit.progress_type;
+
+      if (effectiveProgressType === 'yes_no') {
+        // For yes_no habits, target_value should be null
+        updates.target_value = null;
+      } else {
+        // For time and count habits, validate the value
+        const numericValue = Number(updates.target_value);
+        if (isNaN(numericValue) || numericValue <= 0) {
+          return res.status(400).json({
+            message: 'target_value must be a positive number',
+          });
+        }
+        updates.target_value = numericValue;
+      }
+    }
+
+    // If changing progress_type to time/count, require target_value
+    if (updates.progress_type && updates.progress_type !== 'yes_no') {
+      if (updates.target_value === undefined && !habit.target_value) {
+        return res.status(400).json({
+          message: `target_value is required when changing to ${updates.progress_type} type`,
+        });
+      }
     }
 
     updates.updated_at = new Date();
