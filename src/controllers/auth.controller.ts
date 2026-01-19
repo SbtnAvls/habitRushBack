@@ -6,6 +6,7 @@ import { UserModel } from '../models/user.model';
 import { RefreshTokenModel } from '../models/refresh-token.model';
 import { TokenBlacklistModel } from '../models/token-blacklist.model';
 import { AuthRequest } from '../middleware/auth.middleware';
+import { getJwtSecret, getRefreshTokenSecret } from '../config/secrets';
 
 // Lazy initialization to ensure env vars are loaded
 let googleClient: OAuth2Client | null = null;
@@ -25,6 +26,55 @@ const getGoogleAudiences = (): string[] => {
   return audiences;
 };
 
+// MEDIUM FIX: Improved email validation constants
+// More restrictive regex that requires:
+// - Local part: at least 1 char, allows letters, numbers, dots, hyphens, underscores, plus
+// - Domain: at least 2 chars before TLD
+// - TLD: 2-10 letters (covers .com, .info, .museum, etc.)
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,10}$/;
+const EMAIL_MAX_LENGTH = 254; // RFC 5321 limit
+const EMAIL_MIN_LENGTH = 5; // Minimum realistic email: a@b.co
+
+function isValidEmail(email: string): boolean {
+  if (typeof email !== 'string') return false;
+  if (email.length < EMAIL_MIN_LENGTH || email.length > EMAIL_MAX_LENGTH) return false;
+  if (!EMAIL_REGEX.test(email)) return false;
+
+  // Additional checks
+  const [localPart, domain] = email.split('@');
+  if (!localPart || !domain) return false;
+  if (localPart.length > 64) return false; // RFC 5321 local part limit
+  if (domain.length > 255) return false; // RFC 5321 domain limit
+  if (localPart.startsWith('.') || localPart.endsWith('.')) return false;
+  if (localPart.includes('..')) return false; // No consecutive dots
+
+  return true;
+}
+
+// MEDIUM FIX: Username validation constants
+const USERNAME_MIN_LENGTH = 2;
+const USERNAME_MAX_LENGTH = 30;
+const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/;
+
+function isValidUsername(username: string): { valid: boolean; error?: string } {
+  if (typeof username !== 'string') {
+    return { valid: false, error: 'Username must be a string' };
+  }
+
+  const trimmed = username.trim();
+  if (trimmed.length < USERNAME_MIN_LENGTH) {
+    return { valid: false, error: `Username must be at least ${USERNAME_MIN_LENGTH} characters` };
+  }
+  if (trimmed.length > USERNAME_MAX_LENGTH) {
+    return { valid: false, error: `Username cannot exceed ${USERNAME_MAX_LENGTH} characters` };
+  }
+  if (!USERNAME_REGEX.test(trimmed)) {
+    return { valid: false, error: 'Username can only contain letters, numbers, and underscores' };
+  }
+
+  return { valid: true };
+}
+
 export const register = async (req: Request, res: Response) => {
   const { username, email, password } = req.body;
 
@@ -33,8 +83,33 @@ export const register = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'username, email and password are required' });
     }
 
-    if (password.length < 6) {
-      return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+    // MEDIUM FIX: Validate username format and length
+    const usernameValidation = isValidUsername(username);
+    if (!usernameValidation.valid) {
+      return res.status(400).json({ message: usernameValidation.error });
+    }
+
+    // MEDIUM FIX: Improved password requirements
+    // LOW FIX: Added password complexity requirements
+    if (password.length < 8) {
+      return res.status(400).json({ message: 'Password must be at least 8 characters long' });
+    }
+    if (password.length > 128) {
+      return res.status(400).json({ message: 'Password cannot exceed 128 characters' });
+    }
+    // Check for at least one uppercase, one lowercase, and one number
+    const hasUppercase = /[A-Z]/.test(password);
+    const hasLowercase = /[a-z]/.test(password);
+    const hasNumber = /[0-9]/.test(password);
+    if (!hasUppercase || !hasLowercase || !hasNumber) {
+      return res.status(400).json({
+        message: 'Password must contain at least one uppercase letter, one lowercase letter, and one number',
+      });
+    }
+
+    // MEDIUM FIX: Validate email format
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ message: 'Invalid email format' });
     }
 
     const existingUser = await UserModel.findByEmail(email);
@@ -60,14 +135,14 @@ export const register = async (req: Request, res: Response) => {
     });
 
     // Generate access token (short-lived)
-    const accessToken = jwt.sign({ id: newUser.id }, process.env.JWT_SECRET || 'your_jwt_secret', {
+    const accessToken = jwt.sign({ id: newUser.id }, getJwtSecret(), {
       expiresIn: '15m',
     });
 
     // Generate refresh token (long-lived)
     const refreshToken = jwt.sign(
       { id: newUser.id, type: 'refresh' },
-      process.env.REFRESH_TOKEN_SECRET || 'your_refresh_secret',
+      getRefreshTokenSecret(),
       { expiresIn: '7d' },
     );
 
@@ -85,7 +160,9 @@ export const register = async (req: Request, res: Response) => {
       expiresIn: 900, // 15 minutes in seconds
     });
   } catch (error) {
-    console.error(error);
+    // LOW FIX: Sanitize error logging
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Registration error:', errorMessage);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -114,14 +191,14 @@ export const login = async (req: Request, res: Response) => {
     }
 
     // Generate access token (short-lived)
-    const accessToken = jwt.sign({ id: user.id }, process.env.JWT_SECRET || 'your_jwt_secret', {
+    const accessToken = jwt.sign({ id: user.id }, getJwtSecret(), {
       expiresIn: '15m',
     });
 
     // Generate refresh token (long-lived)
     const refreshToken = jwt.sign(
       { id: user.id, type: 'refresh' },
-      process.env.REFRESH_TOKEN_SECRET || 'your_refresh_secret',
+      getRefreshTokenSecret(),
       { expiresIn: '7d' },
     );
 
@@ -165,9 +242,10 @@ export const refresh = async (req: Request, res: Response) => {
     }
 
     // Verify refresh token signature and expiration
+    // LOW FIX: Added explicit algorithm specification to prevent algorithm confusion attacks
     let decoded: { id: string; type: string };
     try {
-      decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET || 'your_refresh_secret') as {
+      decoded = jwt.verify(refreshToken, getRefreshTokenSecret(), { algorithms: ['HS256'] }) as {
         id: string;
         type: string;
       };
@@ -190,7 +268,7 @@ export const refresh = async (req: Request, res: Response) => {
     }
 
     // Generate new access token
-    const newAccessToken = jwt.sign({ id: decoded.id }, process.env.JWT_SECRET || 'your_jwt_secret', {
+    const newAccessToken = jwt.sign({ id: decoded.id }, getJwtSecret(), {
       expiresIn: '15m',
     });
 
@@ -201,7 +279,7 @@ export const refresh = async (req: Request, res: Response) => {
     // Generate new refresh token
     const newRefreshToken = jwt.sign(
       { id: decoded.id, type: 'refresh' },
-      process.env.REFRESH_TOKEN_SECRET || 'your_refresh_secret',
+      getRefreshTokenSecret(),
       { expiresIn: '7d' },
     );
 
@@ -219,7 +297,9 @@ export const refresh = async (req: Request, res: Response) => {
       expiresIn: 900, // 15 minutes in seconds
     });
   } catch (error) {
-    console.error(error);
+    // LOW FIX: Sanitize error logging
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Refresh token error:', errorMessage);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -350,14 +430,14 @@ export const googleLogin = async (req: Request, res: Response) => {
     }
 
     // Generate access token
-    const accessToken = jwt.sign({ id: user.id }, process.env.JWT_SECRET || 'your_jwt_secret', {
+    const accessToken = jwt.sign({ id: user.id }, getJwtSecret(), {
       expiresIn: '15m',
     });
 
     // Generate refresh token
     const refreshToken = jwt.sign(
       { id: user.id, type: 'refresh' },
-      process.env.REFRESH_TOKEN_SECRET || 'your_refresh_secret',
+      getRefreshTokenSecret(),
       { expiresIn: '7d' },
     );
 
@@ -382,16 +462,12 @@ export const googleLogin = async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error('Google login error:', error);
+    // CRITICAL FIX: Log specific error for debugging but return generic message to prevent info disclosure
+    // LOW FIX: Sanitize error logging to prevent token/sensitive data exposure
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Google login error:', errorMessage);
 
-    // Provide more specific error for invalid tokens
-    if (error instanceof Error && error.message.includes('Token used too late')) {
-      return res.status(401).json({ message: 'Google token has expired' });
-    }
-    if (error instanceof Error && error.message.includes('Invalid token')) {
-      return res.status(401).json({ message: 'Invalid Google token' });
-    }
-
-    res.status(500).json({ message: 'Server error during Google authentication' });
+    // Return generic error message to prevent information disclosure about token validation
+    res.status(401).json({ message: 'Google authentication failed' });
   }
 };

@@ -8,6 +8,11 @@ import {
 } from '../services/challenge-validation.service';
 import { AuthRequest } from '../middleware/auth.middleware';
 
+// MEDIUM FIX: Validation constants for proof submissions
+const PROOF_TEXT_MAX_LENGTH = 2000;
+const PROOF_IMAGE_URL_MAX_LENGTH = 5 * 1024 * 1024; // 5MB base64 max (~3.75MB actual image)
+const VALID_IMAGE_PREFIXES = ['data:image/jpeg', 'data:image/png', 'data:image/jpg', 'data:image/gif', 'data:image/webp'];
+
 /**
  * POST /api/challenges/:userChallengeId/submit-proof
  * Envía pruebas para completar un challenge cuando el usuario no tiene vidas
@@ -26,6 +31,48 @@ export const submitProof = async (req: AuthRequest, res: Response) => {
         message: 'Debes proporcionar al menos una prueba (texto o imagen)',
         success: false,
       });
+    }
+
+    // MEDIUM FIX: Validate proofText length
+    if (proofText) {
+      if (typeof proofText !== 'string') {
+        return res.status(400).json({
+          message: 'proofText debe ser un string',
+          success: false,
+        });
+      }
+      if (proofText.length > PROOF_TEXT_MAX_LENGTH) {
+        return res.status(400).json({
+          message: `El texto de prueba no puede exceder ${PROOF_TEXT_MAX_LENGTH} caracteres`,
+          success: false,
+        });
+      }
+    }
+
+    // MEDIUM FIX: Validate proofImageUrl format and size
+    if (proofImageUrl) {
+      if (typeof proofImageUrl !== 'string') {
+        return res.status(400).json({
+          message: 'proofImageUrl debe ser un string',
+          success: false,
+        });
+      }
+      // Check size limit for base64 data URLs
+      if (proofImageUrl.length > PROOF_IMAGE_URL_MAX_LENGTH) {
+        return res.status(400).json({
+          message: 'La imagen es demasiado grande. Máximo 5MB.',
+          success: false,
+        });
+      }
+      // Validate format: must be valid data URL or HTTP(S) URL
+      const isValidDataUrl = VALID_IMAGE_PREFIXES.some(prefix => proofImageUrl.startsWith(prefix));
+      const isValidHttpUrl = proofImageUrl.startsWith('http://') || proofImageUrl.startsWith('https://');
+      if (!isValidDataUrl && !isValidHttpUrl) {
+        return res.status(400).json({
+          message: 'Formato de imagen inválido. Usa una URL válida o imagen base64.',
+          success: false,
+        });
+      }
     }
 
     const result = await submitChallengeProof(userId, userChallengeId, proofText, proofImageUrl);
@@ -101,9 +148,8 @@ export const getAvailableForRevival = async (req: AuthRequest, res: Response) =>
     const connection = await pool.getConnection();
 
     try {
-      const [users] = await connection.execute<RowDataPacket[]>('SELECT lives FROM USERS WHERE id = UUID_TO_BIN(?)', [
-        userId,
-      ]);
+      // NOTE: DB uses CHAR(36) for UUIDs, not BINARY(16)
+      const [users] = await connection.execute<RowDataPacket[]>('SELECT lives FROM USERS WHERE id = ?', [userId]);
 
       if (users.length === 0) {
         return res.status(404).json({

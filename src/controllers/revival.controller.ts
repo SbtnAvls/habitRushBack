@@ -4,6 +4,7 @@ import { ChallengeModel } from '../models/challenge.model';
 import { UserStatsModel } from '../models/user-stats.model';
 import { LifeHistoryModel } from '../models/life-history.model';
 import { NotificationModel } from '../models/notification.model';
+import { isValidUUID } from '../middleware/uuid-validation.middleware';
 import pool from '../db';
 import { RowDataPacket } from 'mysql2';
 
@@ -189,6 +190,11 @@ export class RevivalController {
         return res.status(400).json({ message: 'challenge_id es requerido' });
       }
 
+      // MEDIUM FIX: Validate challenge_id UUID format
+      if (typeof challenge_id !== 'string' || !isValidUUID(challenge_id)) {
+        return res.status(400).json({ message: 'challenge_id tiene formato inválido' });
+      }
+
       if (!proof_text && !proof_image_url) {
         return res.status(400).json({
           message: 'Debes enviar prueba (proof_text o proof_image_url)',
@@ -217,14 +223,65 @@ export class RevivalController {
         });
       }
 
-      // TODO: Real AI validation
-      // For now, simulation (approves if text >20 chars or has image)
-      const isValid = (proof_text && proof_text.length > 20) || proof_image_url;
+      // LOW FIX: Improved proof validation with better rules
+      // MEDIUM FIX: Added image size validation
+      const PROOF_TEXT_MIN_LENGTH = 50;
+      const PROOF_TEXT_MAX_LENGTH = 2000;
+      const PROOF_IMAGE_URL_MAX_LENGTH = 5 * 1024 * 1024; // 5MB base64 max
+      const VALID_IMAGE_PREFIXES = ['data:image/jpeg', 'data:image/png', 'data:image/jpg', 'data:image/gif', 'data:image/webp'];
 
-      if (!isValid) {
+      let hasValidText = false;
+      let hasValidImage = false;
+
+      // Validate proof_text if provided
+      if (proof_text) {
+        if (typeof proof_text !== 'string') {
+          return res.status(400).json({
+            success: false,
+            message: 'proof_text debe ser un string',
+          });
+        }
+        const trimmedText = proof_text.trim();
+        if (trimmedText.length > PROOF_TEXT_MAX_LENGTH) {
+          return res.status(400).json({
+            success: false,
+            message: `El texto de prueba no puede exceder ${PROOF_TEXT_MAX_LENGTH} caracteres`,
+          });
+        }
+        // Check minimum length and that it's not just whitespace/repeated chars
+        if (trimmedText.length >= PROOF_TEXT_MIN_LENGTH) {
+          // Basic check: at least 3 different words
+          const words = trimmedText.split(/\s+/).filter(w => w.length > 2);
+          hasValidText = words.length >= 3;
+        }
+      }
+
+      // Validate proof_image_url if provided
+      if (proof_image_url) {
+        if (typeof proof_image_url !== 'string') {
+          return res.status(400).json({
+            success: false,
+            message: 'proof_image_url debe ser un string',
+          });
+        }
+        // MEDIUM FIX: Check size limit for base64 data URLs to prevent memory exhaustion
+        if (proof_image_url.length > PROOF_IMAGE_URL_MAX_LENGTH) {
+          return res.status(400).json({
+            success: false,
+            message: 'La imagen es demasiado grande. Máximo 5MB.',
+          });
+        }
+        // Check if it's a valid base64 data URL
+        const isValidDataUrl = VALID_IMAGE_PREFIXES.some(prefix => proof_image_url.startsWith(prefix));
+        // Or a valid HTTP(S) URL
+        const isValidHttpUrl = proof_image_url.startsWith('http://') || proof_image_url.startsWith('https://');
+        hasValidImage = isValidDataUrl || isValidHttpUrl;
+      }
+
+      if (!hasValidText && !hasValidImage) {
         return res.status(400).json({
           success: false,
-          message: 'Pruebas insuficientes. Proporciona más detalle en tu descripción (mínimo 20 caracteres).',
+          message: `Pruebas insuficientes. Proporciona una descripción detallada (mínimo ${PROOF_TEXT_MIN_LENGTH} caracteres con al menos 3 palabras) o una imagen válida.`,
         });
       }
 

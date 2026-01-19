@@ -74,13 +74,48 @@ export async function grantChallengeCompletionXp(
   return xp;
 }
 
+// MEDIUM FIX: Date format validation regex
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Validate date string format (YYYY-MM-DD) and return parsed components
+ * Returns null if invalid
+ */
+function parseDateString(dateStr: string): { year: number; month: number; day: number } | null {
+  if (!DATE_REGEX.test(dateStr)) {
+    return null;
+  }
+
+  const [year, month, day] = dateStr.split('-').map(Number);
+
+  // Validate ranges
+  if (isNaN(year) || isNaN(month) || isNaN(day)) {
+    return null;
+  }
+  if (month < 1 || month > 12 || day < 1 || day > 31) {
+    return null;
+  }
+  // Basic validation for days in month (not perfect but catches obvious errors)
+  const maxDays = new Date(year, month, 0).getDate();
+  if (day > maxDays) {
+    return null;
+  }
+
+  return { year, month, day };
+}
+
 /**
  * Get day of week from date string (0 = Sunday, 6 = Saturday)
- * Parses date string directly to avoid timezone issues
+ * MEDIUM FIX: Added validation for date string format
  */
 function getDayOfWeekFromDateString(dateStr: string): number {
-  // Parse YYYY-MM-DD format directly to avoid timezone issues
-  const [year, month, day] = dateStr.split('-').map(Number);
+  const parsed = parseDateString(dateStr);
+  if (!parsed) {
+    console.error(`[XP Service] Invalid date string: ${dateStr}`);
+    return 0; // Default to Sunday if invalid (safe fallback)
+  }
+
+  const { year, month, day } = parsed;
   // Create date at noon to avoid any DST edge cases
   const date = new Date(year, month - 1, day, 12, 0, 0);
   return date.getDay();

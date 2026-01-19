@@ -187,7 +187,7 @@ describe('Challenge Validation Service', () => {
 
       await submitChallengeProof(userId, userChallengeId, 'Valid proof text with enough characters to pass validation');
 
-      // The actual query uses UUID_TO_BIN(?) for the IDs
+      // Verify LIFE_HISTORY insert was called with correct params
       expect(mockConnection.execute).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO LIFE_HISTORY'),
         expect.arrayContaining([expect.any(String), userId, 0, 0, 'challenge_completed', userChallengeId]),

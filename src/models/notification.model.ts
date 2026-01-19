@@ -7,10 +7,27 @@ export type NotificationType =
   | 'habit_reminder'
   | 'life_warning'
   | 'challenge_available'
+  | 'challenge_result'
   | 'league_update'
   | 'pending_redemption'
   | 'pending_expiring'
   | 'death';
+
+// HIGH FIX: Runtime validation for notification types
+export const VALID_NOTIFICATION_TYPES: NotificationType[] = [
+  'habit_reminder',
+  'life_warning',
+  'challenge_available',
+  'challenge_result',
+  'league_update',
+  'pending_redemption',
+  'pending_expiring',
+  'death',
+];
+
+export function isValidNotificationType(type: string): type is NotificationType {
+  return VALID_NOTIFICATION_TYPES.includes(type as NotificationType);
+}
 
 export interface Notification {
   id: string;
@@ -36,11 +53,21 @@ export interface CreateNotificationInput {
 
 interface NotificationRow extends RowDataPacket, Notification {}
 
+// MEDIUM FIX: Pagination constants
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 200;
+
 export class NotificationModel {
   /**
    * Create a new notification
+   * HIGH FIX: Validates notification type at runtime
    */
   static async create(input: CreateNotificationInput, connection?: PoolConnection): Promise<string> {
+    // HIGH FIX: Validate notification type before inserting
+    if (!isValidNotificationType(input.type)) {
+      throw new Error(`Invalid notification type: ${input.type}. Valid types: ${VALID_NOTIFICATION_TYPES.join(', ')}`);
+    }
+
     const conn = connection || pool;
     const id = uuidv4();
 
@@ -61,12 +88,30 @@ export class NotificationModel {
     return id;
   }
 
-  static async findByUserId(userId: string): Promise<Notification[]> {
+  /**
+   * MEDIUM FIX: Get notifications with pagination
+   */
+  static async findByUserId(userId: string, limit?: number, offset?: number): Promise<Notification[]> {
+    // Apply safe defaults and limits
+    const safeLimit = Math.min(Math.max(1, limit || DEFAULT_LIMIT), MAX_LIMIT);
+    const safeOffset = Math.max(0, offset || 0);
+
     const [rows] = await pool.query<NotificationRow[]>(
-      'SELECT * FROM NOTIFICATIONS WHERE user_id = ? ORDER BY created_at DESC',
-      [userId],
+      'SELECT * FROM NOTIFICATIONS WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+      [userId, safeLimit, safeOffset],
     );
     return rows;
+  }
+
+  /**
+   * Get total count for pagination metadata
+   */
+  static async getCountForUser(userId: string): Promise<number> {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      'SELECT COUNT(*) as total FROM NOTIFICATIONS WHERE user_id = ?',
+      [userId],
+    );
+    return rows[0].total as number;
   }
 
   static async findById(id: string): Promise<Notification | null> {

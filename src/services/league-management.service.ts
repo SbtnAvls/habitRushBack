@@ -5,7 +5,7 @@ import { LeagueWeek, LEAGUE_IDS, COMPETITORS_PER_LEAGUE } from '../models/league
 
 interface UserWithLeagueHistory {
   id: string;
-  name: string;
+  username: string;
   weekly_xp: number;
   last_weekly_xp: number | null;
   last_league_id: number | null;
@@ -14,7 +14,7 @@ interface UserWithLeagueHistory {
 
 interface UserForLeague {
   id: string;
-  name: string;
+  username: string;
   weekly_xp: number;
   targetLeague: number;
 }
@@ -97,7 +97,7 @@ async function getActiveUsersWithHistory(connection: PoolConnection): Promise<Us
   const [rows] = await connection.query<RowDataPacket[]>(
     `SELECT
        u.id,
-       u.name,
+       u.username,
        u.weekly_xp,
        ulh.weekly_xp as last_weekly_xp,
        ulh.league_id as last_league_id,
@@ -120,7 +120,7 @@ async function getActiveUsersWithHistory(connection: PoolConnection): Promise<Us
 
   return (rows as UserWithLeagueHistory[]).map(row => ({
     id: row.id,
-    name: row.name,
+    username: row.username,
     weekly_xp: row.last_weekly_xp ?? 0,
     targetLeague: calculateTargetLeague(row.last_league_id, row.change_type),
   }));
@@ -138,7 +138,7 @@ async function batchInsertCompetitors(
     leagueId: number;
     leagueGroup: number;
     userId: string;
-    name: string;
+    username: string;
     position: number;
   }>
 ): Promise<void> {
@@ -157,7 +157,7 @@ async function batchInsertCompetitors(
     c.leagueId,
     c.leagueGroup,
     c.userId,
-    c.name,
+    c.username,
     0, // weekly_xp
     c.position,
     true, // is_real
@@ -166,7 +166,7 @@ async function batchInsertCompetitors(
   try {
     await connection.query(
       `INSERT INTO LEAGUE_COMPETITORS
-       (id, league_week_id, league_id, league_group, user_id, name, weekly_xp, position, is_real)
+       (id, league_week_id, league_id, league_group, user_id, username, weekly_xp, position, is_real)
        VALUES ?`,
       [values]
     );
@@ -211,7 +211,7 @@ async function distributeUsersToLeaguesTx(
     leagueId: number;
     leagueGroup: number;
     userId: string;
-    name: string;
+    username: string;
     position: number;
   }> = [];
 
@@ -236,7 +236,7 @@ async function distributeUsersToLeaguesTx(
           leagueId,
           leagueGroup,
           userId: user.id,
-          name: user.name,
+          username: user.username,
           position: position + 1,
         });
       }

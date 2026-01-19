@@ -73,14 +73,22 @@ export class UserStatsModel {
     );
   }
 
+  // HIGH FIX: Whitelist of allowed stat columns for incrementStat to prevent SQL injection
+  private static readonly ALLOWED_STATS = ['total_completions', 'perfect_weeks', 'revival_count', 'reset_count'] as const;
+
   /**
    * Increment a specific stat counter
+   * HIGH FIX: Runtime validation of stat column against whitelist
    */
   static async incrementStat(
     userId: string,
     stat: 'total_completions' | 'perfect_weeks' | 'revival_count' | 'reset_count',
     connection?: PoolConnection,
   ): Promise<void> {
+    // Runtime validation to prevent SQL injection even if TypeScript types are bypassed
+    if (!this.ALLOWED_STATS.includes(stat)) {
+      throw new Error(`Invalid stat column: ${stat}`);
+    }
     const conn = connection || pool;
     await conn.query(`UPDATE USER_STATS SET ${stat} = ${stat} + 1, updated_at = NOW() WHERE user_id = ?`, [userId]);
   }
@@ -104,7 +112,7 @@ export class UserStatsModel {
    */
   static async getLeaderboard(limit: number = 10): Promise<UserStats[]> {
     const [rows] = await pool.query<UserStatsRow[]>(
-      `SELECT us.*, u.name as user_name
+      `SELECT us.*, u.username as user_username
        FROM USER_STATS us
        JOIN USERS u ON us.user_id = u.id
        ORDER BY us.discipline_score DESC

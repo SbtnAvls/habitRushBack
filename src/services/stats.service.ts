@@ -42,12 +42,19 @@ export async function adjustDiscipline(
 
 /**
  * Handle stats update when a habit is completed
+ * @param currentStreak - Must be a non-negative integer
  */
 export async function onHabitCompleted(
   userId: string,
   currentStreak: number,
   connection?: PoolConnection,
 ): Promise<void> {
+  // CRITICAL FIX: Validate currentStreak to prevent corrupting stats
+  if (typeof currentStreak !== 'number' || !Number.isInteger(currentStreak) || currentStreak < 0) {
+    console.error(`[Stats] Invalid currentStreak value: ${currentStreak} for user ${userId}. Using 0.`);
+    currentStreak = 0;
+  }
+
   await adjustDiscipline(userId, 'HABIT_COMPLETED', connection);
   await UserStatsModel.incrementStat(userId, 'total_completions', connection);
   await UserStatsModel.updateMaxStreak(userId, currentStreak, connection);

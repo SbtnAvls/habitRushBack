@@ -1,4 +1,5 @@
 import pool from '../db';
+import { PoolConnection } from 'mysql2/promise';
 import { v4 as uuidv4 } from 'uuid';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
 
@@ -46,23 +47,42 @@ export class UserChallengeModel {
     return rows as unknown as UserChallengeWithDetails[];
   }
 
-  static async assign(userId: string, challengeId: string, habitId?: string | null): Promise<UserChallenge> {
+  /**
+   * Assign a challenge to a user
+   * LOW FIX: Added documentation - caller MUST validate challengeId exists before calling
+   * @param userId - The user ID
+   * @param challengeId - The challenge ID (MUST be validated by caller before calling this method)
+   * @param habitId - Optional habit ID for pending redemption challenges
+   * @param connection - Optional connection for transaction support
+   * @throws Database error if challengeId doesn't exist (FK constraint violation)
+   */
+  static async assign(
+    userId: string,
+    challengeId: string,
+    habitId?: string | null,
+    connection?: PoolConnection,
+  ): Promise<UserChallenge> {
+    const conn = connection || pool;
     const id = uuidv4();
-    await pool.query('INSERT INTO USER_CHALLENGES (id, user_id, challenge_id, habit_id) VALUES (?, ?, ?, ?)', [
+    await conn.query('INSERT INTO USER_CHALLENGES (id, user_id, challenge_id, habit_id) VALUES (?, ?, ?, ?)', [
       id,
       userId,
       challengeId,
       habitId || null,
     ]);
-    const [rows] = await pool.query<RowDataPacket[]>('SELECT * FROM USER_CHALLENGES WHERE id = ?', [id]);
+    const [rows] = await conn.query<RowDataPacket[]>('SELECT * FROM USER_CHALLENGES WHERE id = ?', [id]);
     return mapUserChallenge(rows[0]);
   }
 
   /**
    * Assign a general challenge (for revival - no habit associated)
    */
-  static async assignGeneral(userId: string, challengeId: string): Promise<UserChallenge> {
-    return this.assign(userId, challengeId, null);
+  static async assignGeneral(
+    userId: string,
+    challengeId: string,
+    connection?: PoolConnection,
+  ): Promise<UserChallenge> {
+    return this.assign(userId, challengeId, null, connection);
   }
 
   static async updateStatus(

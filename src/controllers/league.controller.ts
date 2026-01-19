@@ -78,9 +78,14 @@ const getCurrentLeague = async (req: AuthRequest, res: Response) => {
   }
 };
 
+// MEDIUM FIX: Pagination constants for league history
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 200;
+
 // @desc    Get user's league history
 // @route   GET /api/users/me/league-history
 // @access  Private
+// MEDIUM FIX: Added pagination support
 const getLeagueHistory = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.id;
@@ -89,6 +94,14 @@ const getLeagueHistory = async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    // MEDIUM FIX: Parse and validate pagination params
+    const limitParam = parseInt(req.query.limit as string, 10);
+    const offsetParam = parseInt(req.query.offset as string, 10);
+
+    const limit = !isNaN(limitParam) && limitParam > 0 ? Math.min(limitParam, MAX_LIMIT) : DEFAULT_LIMIT;
+    const offset = !isNaN(offsetParam) && offsetParam >= 0 ? offsetParam : 0;
+
+    // Get paginated history
     const [historyRows] = await db.query<RowDataPacket[]>(
       `SELECT
           ulh.weekly_xp AS weeklyXp,
@@ -101,11 +114,27 @@ const getLeagueHistory = async (req: AuthRequest, res: Response) => {
        JOIN LEAGUES l ON ulh.league_id = l.id
        JOIN LEAGUE_WEEKS lw ON ulh.league_week_id = lw.id
        WHERE ulh.user_id = ?
-       ORDER BY lw.week_start DESC`,
-      [userId],
+       ORDER BY lw.week_start DESC
+       LIMIT ? OFFSET ?`,
+      [userId, limit, offset],
     );
 
-    res.status(200).json(historyRows);
+    // Get total count for pagination metadata
+    const [countRows] = await db.query<RowDataPacket[]>(
+      'SELECT COUNT(*) as total FROM USER_LEAGUE_HISTORY WHERE user_id = ?',
+      [userId],
+    );
+    const total = countRows[0].total as number;
+
+    res.status(200).json({
+      data: historyRows,
+      pagination: {
+        limit,
+        offset,
+        total,
+        hasMore: offset + historyRows.length < total,
+      },
+    });
   } catch (_error) {
     res.status(500).json({ message: 'Error fetching league history.' });
   }

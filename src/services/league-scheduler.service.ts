@@ -7,6 +7,11 @@ import {
   getCurrentHourActivityInfo,
 } from './league-bot.service';
 import { processWeekEnd, resetWeeklyXp, cleanupOldLeagueWeeks } from './league-weekly-processor.service';
+import { CronJobExecutionModel } from '../models/cron-job-execution.model';
+
+// Job IDs for tracking in CRON_JOB_EXECUTIONS table
+const DAILY_BOT_RESET_JOB_ID = 'daily-bot-reset';
+const DAILY_BOT_RESET_JOB_NAME = 'Daily Bot XP Reset';
 
 /**
  * League Scheduler Service
@@ -31,6 +36,7 @@ export class LeagueSchedulerService {
 
   /**
    * Start all league schedulers
+   * CRITICAL FIX: Now includes catch-up logic for daily bot reset on startup
    */
   start(): void {
     if (this.isRunning) {
@@ -40,6 +46,15 @@ export class LeagueSchedulerService {
 
     this.isRunning = true;
     console.warn('[LeagueScheduler] Starting league scheduler service...');
+
+    // CRITICAL FIX: Run catch-up check on startup (with delay to ensure DB is ready)
+    setTimeout(async () => {
+      console.warn('[LeagueScheduler] Running startup catch-up check for daily bot reset...');
+      const didCatchUp = await this.runBotResetCatchUpIfNeeded();
+      if (didCatchUp) {
+        console.warn('[LeagueScheduler] Bot reset catch-up was executed on startup');
+      }
+    }, 10000); // 10 second delay to ensure DB connection is established
 
     // Start bot simulation jobs (frequent habit completion + daily reset)
     this.startBotSimulationJobs();
@@ -273,8 +288,56 @@ export class LeagueSchedulerService {
       console.warn(
         `[LeagueScheduler] Bot reset complete: ${result.botsReset} bots with targets, ${result.botsSkippingToday} bots skipping today`,
       );
+
+      // Record successful execution for catch-up tracking
+      await CronJobExecutionModel.recordExecution(
+        DAILY_BOT_RESET_JOB_ID,
+        DAILY_BOT_RESET_JOB_NAME,
+        'success'
+      );
     } catch (error) {
       console.error('[LeagueScheduler] Error in daily bot reset:', error);
+      // Record failed execution
+      await CronJobExecutionModel.recordExecution(
+        DAILY_BOT_RESET_JOB_ID,
+        DAILY_BOT_RESET_JOB_NAME,
+        'failed',
+        error instanceof Error ? error.message : 'Unknown error'
+      ).catch(e => console.error('[LeagueScheduler] Failed to record error:', e));
+    }
+  }
+
+  /**
+   * Check if daily bot reset catch-up is needed and run if necessary
+   * This handles the case where the server was down during scheduled execution time (00:00)
+   */
+  async runBotResetCatchUpIfNeeded(): Promise<boolean> {
+    try {
+      const now = new Date();
+      const currentHour = now.getHours();
+
+      // Only consider catch-up if we're past the scheduled time (00:00)
+      // but before the next scheduled time. After 00:00 but within same day.
+      if (currentHour < 1) {
+        console.warn('[LeagueScheduler] Too early for bot reset catch-up check (before 01:00), skipping');
+        return false;
+      }
+
+      // Check if bot reset already ran successfully today
+      const hasRunToday = await CronJobExecutionModel.hasRunToday(DAILY_BOT_RESET_JOB_ID);
+
+      if (hasRunToday) {
+        console.warn('[LeagueScheduler] Daily bot reset already ran today, no catch-up needed');
+        return false;
+      }
+
+      console.warn('[LeagueScheduler] Bot reset catch-up needed! Running missed daily bot reset...');
+      await this.runDailyBotReset();
+      console.warn('[LeagueScheduler] Bot reset catch-up completed successfully');
+      return true;
+    } catch (error) {
+      console.error('[LeagueScheduler] Error during bot reset catch-up:', error);
+      return false;
     }
   }
 

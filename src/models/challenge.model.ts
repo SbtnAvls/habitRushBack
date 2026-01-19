@@ -1,4 +1,5 @@
 import { RowDataPacket } from 'mysql2';
+import { PoolConnection } from 'mysql2/promise';
 import pool from '../db';
 
 export interface Challenge {
@@ -30,6 +31,21 @@ export class ChallengeModel {
    */
   static async findById(id: string): Promise<Challenge | null> {
     const [rows] = await pool.query<ChallengeRow[]>('SELECT * FROM CHALLENGES WHERE id = ?', [id]);
+    if (rows.length === 0) {
+      return null;
+    }
+    return rows[0];
+  }
+
+  /**
+   * CRITICAL FIX: Find challenge by ID with row lock for transactional updates
+   * Prevents TOCTOU race conditions in assignment operations
+   */
+  static async findByIdForUpdate(id: string, connection: PoolConnection): Promise<Challenge | null> {
+    const [rows] = await connection.query<ChallengeRow[]>(
+      'SELECT * FROM CHALLENGES WHERE id = ? FOR UPDATE',
+      [id]
+    );
     if (rows.length === 0) {
       return null;
     }

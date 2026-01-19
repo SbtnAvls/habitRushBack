@@ -1,6 +1,5 @@
 import { DailyEvaluationService } from '../../services/daily-evaluation.service';
 import * as habitEvaluationService from '../../services/habit-evaluation.service';
-import { format } from 'date-fns';
 
 // Mock del servicio de evaluación de hábitos
 jest.mock('../../services/habit-evaluation.service');
@@ -10,6 +9,7 @@ global.console = {
   ...console,
   warn: jest.fn(),
   error: jest.fn(),
+  info: jest.fn(),
 };
 
 describe('Daily Evaluation Service', () => {
@@ -25,63 +25,63 @@ describe('Daily Evaluation Service', () => {
     jest.useRealTimers();
   });
 
-  describe('runDailyEvaluation', () => {
+  describe('runDailyEvaluationWithPendingRedemptions', () => {
     it('should run evaluation successfully', async () => {
       const mockResults = [
         {
           user_id: 'user-1',
           date: '2024-01-19',
           missed_habits: ['habit-1'],
-          lives_lost: 1,
-          new_lives_total: 1,
-          habits_disabled: [],
+          pending_redemptions_created: 1,
         },
         {
           user_id: 'user-2',
           date: '2024-01-19',
           missed_habits: [],
-          lives_lost: 0,
-          new_lives_total: 2,
-          habits_disabled: [],
+          pending_redemptions_created: 0,
         },
       ];
 
-      (habitEvaluationService.evaluateAllUsersDailyHabits as jest.Mock).mockResolvedValue(mockResults);
+      (habitEvaluationService.processExpiredPendingRedemptions as jest.Mock).mockResolvedValue(0);
+      (habitEvaluationService.evaluateAllUsersWithPendingRedemptions as jest.Mock).mockResolvedValue(mockResults);
 
-      await service.runDailyEvaluation();
+      await service.runDailyEvaluationWithPendingRedemptions();
 
-      expect(habitEvaluationService.evaluateAllUsersDailyHabits).toHaveBeenCalledTimes(1);
+      expect(habitEvaluationService.processExpiredPendingRedemptions).toHaveBeenCalledTimes(1);
+      expect(habitEvaluationService.evaluateAllUsersWithPendingRedemptions).toHaveBeenCalledTimes(1);
       expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('Starting daily evaluation'));
       expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('Completed in'));
     });
 
-    // TODO: Fix test - timing issues with fake timers and async operations
-    it.skip('should not run if already running', async () => {
-      (habitEvaluationService.evaluateAllUsersDailyHabits as jest.Mock).mockImplementation(
+    it('should not run if already running', async () => {
+      (habitEvaluationService.processExpiredPendingRedemptions as jest.Mock).mockImplementation(
         () => new Promise(resolve => setTimeout(resolve, 1000)),
       );
 
-      // Iniciar primera evaluación
-      const promise1 = service.runDailyEvaluation();
+      // Start first evaluation (don't await)
+      const promise1 = service.runDailyEvaluationWithPendingRedemptions();
 
-      // Intentar segunda evaluación mientras la primera está corriendo
-      await service.runDailyEvaluation();
+      // Try second evaluation while the first is running
+      await service.runDailyEvaluationWithPendingRedemptions();
 
       expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('Already running'));
 
+      // Clean up
+      jest.advanceTimersByTime(1000);
       await promise1;
     });
 
     it('should not run twice on the same day', async () => {
-      (habitEvaluationService.evaluateAllUsersDailyHabits as jest.Mock).mockResolvedValue([]);
+      (habitEvaluationService.processExpiredPendingRedemptions as jest.Mock).mockResolvedValue(0);
+      (habitEvaluationService.evaluateAllUsersWithPendingRedemptions as jest.Mock).mockResolvedValue([]);
 
-      // Primera ejecución
-      await service.runDailyEvaluation();
+      // First execution
+      await service.runDailyEvaluationWithPendingRedemptions();
 
-      // Segunda ejecución el mismo día
-      await service.runDailyEvaluation();
+      // Second execution the same day
+      await service.runDailyEvaluationWithPendingRedemptions();
 
-      expect(habitEvaluationService.evaluateAllUsersDailyHabits).toHaveBeenCalledTimes(1);
+      expect(habitEvaluationService.evaluateAllUsersWithPendingRedemptions).toHaveBeenCalledTimes(1);
       expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('Already executed today'));
     });
 
@@ -89,127 +89,46 @@ describe('Daily Evaluation Service', () => {
       const mockResults = [
         {
           user_id: 'user-1',
-          missed_habits: ['habit-1', 'habit-2'],
-          lives_lost: 2,
-          new_lives_total: 0,
-          habits_disabled: ['habit-1', 'habit-2', 'habit-3'],
           date: '2024-01-19',
+          missed_habits: ['habit-1', 'habit-2'],
+          pending_redemptions_created: 2,
         },
         {
           user_id: 'user-2',
-          missed_habits: ['habit-1'],
-          lives_lost: 1,
-          new_lives_total: 1,
-          habits_disabled: [],
           date: '2024-01-19',
+          missed_habits: ['habit-1'],
+          pending_redemptions_created: 1,
         },
         {
           user_id: 'user-3',
-          missed_habits: [],
-          lives_lost: 0,
-          new_lives_total: 2,
-          habits_disabled: [],
           date: '2024-01-19',
+          missed_habits: [],
+          pending_redemptions_created: 0,
         },
       ];
 
-      (habitEvaluationService.evaluateAllUsersDailyHabits as jest.Mock).mockResolvedValue(mockResults);
+      (habitEvaluationService.processExpiredPendingRedemptions as jest.Mock).mockResolvedValue(2);
+      (habitEvaluationService.evaluateAllUsersWithPendingRedemptions as jest.Mock).mockResolvedValue(mockResults);
 
-      await service.runDailyEvaluation();
+      await service.runDailyEvaluationWithPendingRedemptions();
 
-      // Format: "Stats: users=${totalUsers}, missed=${usersWithMissedHabits}, livesLost=${totalLivesLost}, habitsDisabled=${totalHabitsDisabled}"
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('Processed 2 expired pending redemptions'));
       expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('Stats: users=3'));
       expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('missed=2'));
-      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('livesLost=3'));
-      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('habitsDisabled=3'));
-    });
-
-    it('should log users with no lives', async () => {
-      const mockResults = [
-        {
-          user_id: 'user-dead',
-          missed_habits: ['habit-1', 'habit-2'],
-          lives_lost: 2,
-          new_lives_total: 0,
-          habits_disabled: ['habit-1', 'habit-2'],
-          date: '2024-01-19',
-        },
-      ];
-
-      (habitEvaluationService.evaluateAllUsersDailyHabits as jest.Mock).mockResolvedValue(mockResults);
-
-      await service.runDailyEvaluation();
-
-      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('1 users have no lives left'));
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('pendingCreated=3'));
     });
 
     it('should handle errors gracefully', async () => {
-      (habitEvaluationService.evaluateAllUsersDailyHabits as jest.Mock).mockRejectedValue(
+      (habitEvaluationService.processExpiredPendingRedemptions as jest.Mock).mockRejectedValue(
         new Error('Database connection failed'),
       );
 
-      await expect(service.runDailyEvaluation()).rejects.toThrow('Database connection failed');
+      await expect(service.runDailyEvaluationWithPendingRedemptions()).rejects.toThrow('Database connection failed');
 
       expect(console.error).toHaveBeenCalledWith(
-        expect.stringContaining('[DailyEvaluation] Error during evaluation'),
+        expect.stringContaining('[DailyEvaluation] Error during daily evaluation'),
         expect.any(Error),
       );
-    });
-  });
-
-  describe('startScheduled', () => {
-    it('should start scheduled service with correct interval', () => {
-      const intervalMs = 1000;
-
-      const intervalId = service.startScheduled(intervalMs, false);
-
-      expect(intervalId).toBeDefined();
-
-      // Limpiar
-      clearInterval(intervalId);
-    });
-
-    it('should run immediately if runImmediately is true', async () => {
-      (habitEvaluationService.evaluateAllUsersDailyHabits as jest.Mock).mockResolvedValue([]);
-
-      service.startScheduled(1000, true);
-
-      // Esperar a que se ejecute
-      await jest.runOnlyPendingTimersAsync();
-
-      expect(habitEvaluationService.evaluateAllUsersDailyHabits).toHaveBeenCalled();
-    });
-
-    // TODO: Fix test - timing issues with jest fake timers
-    it.skip('should execute periodically', async () => {
-      (habitEvaluationService.evaluateAllUsersDailyHabits as jest.Mock).mockResolvedValue([]);
-
-      const intervalId = service.startScheduled(1000, false);
-
-      // Avanzar tiempo 3 veces
-      jest.advanceTimersByTime(3000);
-      await jest.runOnlyPendingTimersAsync();
-
-      // Debe haber ejecutado 3 veces
-      expect(habitEvaluationService.evaluateAllUsersDailyHabits).toHaveBeenCalledTimes(3);
-
-      clearInterval(intervalId);
-    });
-
-    it('should continue running even if one execution fails', async () => {
-      (habitEvaluationService.evaluateAllUsersDailyHabits as jest.Mock)
-        .mockRejectedValueOnce(new Error('First failed'))
-        .mockResolvedValueOnce([]);
-
-      const intervalId = service.startScheduled(1000, false);
-
-      jest.advanceTimersByTime(2000);
-      await jest.runOnlyPendingTimersAsync();
-
-      // Debe haber intentado ejecutar 2 veces
-      expect(habitEvaluationService.evaluateAllUsersDailyHabits).toHaveBeenCalledTimes(2);
-
-      clearInterval(intervalId);
     });
   });
 
@@ -221,7 +140,7 @@ describe('Daily Evaluation Service', () => {
 
       const timeUntil = DailyEvaluationService.getTimeUntilNextExecution();
 
-      // Debe ser aproximadamente 1 hora y 5 minutos (65 minutos)
+      // Should be approximately 1 hour and 5 minutes (65 minutes)
       const expectedMs = 65 * 60 * 1000;
       expect(timeUntil).toBeGreaterThan(expectedMs - 1000);
       expect(timeUntil).toBeLessThan(expectedMs + 1000);
@@ -234,102 +153,72 @@ describe('Daily Evaluation Service', () => {
 
       const timeUntil = DailyEvaluationService.getTimeUntilNextExecution();
 
-      // Debe ser aproximadamente 23 horas y 5 minutos
+      // Should be approximately 23 hours and 5 minutes
       const expectedMs = (23 * 60 + 5) * 60 * 1000;
       expect(timeUntil).toBeGreaterThan(expectedMs - 1000);
       expect(timeUntil).toBeLessThan(expectedMs + 1000);
     });
-
-    // TODO: Fix test - timing calculation edge case
-    it.skip('should handle exactly at 00:05', () => {
-      const mockDate = new Date('2024-01-19T00:05:00');
-      jest.setSystemTime(mockDate);
-
-      const timeUntil = DailyEvaluationService.getTimeUntilNextExecution();
-
-      // Debe ser 24 horas
-      const expectedMs = 24 * 60 * 60 * 1000;
-      expect(timeUntil).toBeGreaterThan(expectedMs - 1000);
-      expect(timeUntil).toBeLessThan(expectedMs + 1000);
-    });
   });
 
-  describe('startDailyAt0005', () => {
-    it('should schedule first execution at 00:05', () => {
+  describe('startWithPendingRedemptions', () => {
+    it('should schedule first execution', () => {
       const mockDate = new Date('2024-01-19T23:00:00');
       jest.setSystemTime(mockDate);
 
-      service.startDailyAt0005();
+      service.startWithPendingRedemptions();
 
-      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('Scheduling first execution in'));
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('Scheduling daily evaluation in'));
+      expect(console.warn).toHaveBeenCalledWith(
+        expect.stringContaining('Starting hourly notification job for expiring redemptions'),
+      );
     });
 
     it('should execute at scheduled time', async () => {
-      (habitEvaluationService.evaluateAllUsersDailyHabits as jest.Mock).mockResolvedValue([]);
+      (habitEvaluationService.processExpiredPendingRedemptions as jest.Mock).mockResolvedValue(0);
+      (habitEvaluationService.evaluateAllUsersWithPendingRedemptions as jest.Mock).mockResolvedValue([]);
+      (habitEvaluationService.notifyExpiringRedemptions as jest.Mock).mockResolvedValue(0);
 
       const mockDate = new Date('2024-01-19T23:59:00');
       jest.setSystemTime(mockDate);
 
-      service.startDailyAt0005();
+      service.startWithPendingRedemptions();
 
-      // Avanzar hasta 00:05 (6 minutos)
+      // Advance until 00:05 (6 minutes)
       jest.advanceTimersByTime(6 * 60 * 1000);
       await jest.runOnlyPendingTimersAsync();
 
-      expect(habitEvaluationService.evaluateAllUsersDailyHabits).toHaveBeenCalled();
+      expect(habitEvaluationService.processExpiredPendingRedemptions).toHaveBeenCalled();
+      expect(habitEvaluationService.evaluateAllUsersWithPendingRedemptions).toHaveBeenCalled();
     });
   });
 
-  describe('integration tests', () => {
-    it('should handle multiple users with different outcomes', async () => {
-      const mockResults = [
-        {
-          user_id: 'user-perfect',
-          missed_habits: [],
-          lives_lost: 0,
-          new_lives_total: 2,
-          habits_disabled: [],
-          date: '2024-01-19',
-        },
-        {
-          user_id: 'user-warning',
-          missed_habits: ['habit-1'],
-          lives_lost: 1,
-          new_lives_total: 1,
-          habits_disabled: [],
-          date: '2024-01-19',
-        },
-        {
-          user_id: 'user-dead',
-          missed_habits: ['habit-1', 'habit-2'],
-          lives_lost: 2,
-          new_lives_total: 0,
-          habits_disabled: ['habit-1', 'habit-2', 'habit-3'],
-          date: '2024-01-19',
-        },
-      ];
+  describe('startHourlyNotifications', () => {
+    it('should run notifications immediately and then every hour', async () => {
+      (habitEvaluationService.notifyExpiringRedemptions as jest.Mock).mockResolvedValue(5);
 
-      (habitEvaluationService.evaluateAllUsersDailyHabits as jest.Mock).mockResolvedValue(mockResults);
+      service.startHourlyNotifications();
 
-      await service.runDailyEvaluation();
-
-      // Format: "Stats: users=${totalUsers}, missed=${usersWithMissedHabits}, livesLost=${totalLivesLost}, habitsDisabled=${totalHabitsDisabled}"
-      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('Stats: users=3'));
-      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('missed=2'));
-      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('1 users have no lives left'));
+      // Should run immediately
+      await jest.runOnlyPendingTimersAsync();
+      expect(habitEvaluationService.notifyExpiringRedemptions).toHaveBeenCalledWith(3);
+      expect(console.warn).toHaveBeenCalledWith(
+        expect.stringContaining('Sent 5 expiring redemption notifications'),
+      );
     });
 
-    it('should update lastExecutionDate after successful run', async () => {
-      (habitEvaluationService.evaluateAllUsersDailyHabits as jest.Mock).mockResolvedValue([]);
+    it('should handle notification errors gracefully', async () => {
+      (habitEvaluationService.notifyExpiringRedemptions as jest.Mock).mockRejectedValue(
+        new Error('Notification failed'),
+      );
 
-      const today = format(new Date(), 'yyyy-MM-dd');
+      service.startHourlyNotifications();
 
-      await service.runDailyEvaluation();
+      await jest.runOnlyPendingTimersAsync();
 
-      // Intentar ejecutar nuevamente
-      await service.runDailyEvaluation();
-
-      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining(`Already executed today (${today})`));
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining('[DailyEvaluation] Error sending expiring notifications'),
+        expect.any(Error),
+      );
     });
   });
 });

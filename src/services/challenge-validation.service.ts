@@ -3,12 +3,14 @@ import { v4 as uuidv4 } from 'uuid';
 import { RowDataPacket } from 'mysql2';
 import { reviveUser } from './habit-evaluation.service';
 import { grantChallengeCompletionXp } from './xp.service';
+import { validateChallengeWithAI, checkLMStudioHealth } from './lmstudio.service';
 
 export interface ChallengeProof {
   id: string;
   user_challenge_id: string;
   proof_text?: string;
   proof_image_url?: string;
+  proof_image_base64?: string;
   proof_type: 'text' | 'image' | 'both';
   validation_status: 'pending' | 'approved' | 'rejected';
   validation_result?: string;
@@ -23,48 +25,60 @@ export interface ValidationResult {
 }
 
 /**
- * Valida las pruebas enviadas para un challenge usando AI
- * Por ahora es una simulación, pero aquí se integraría con un servicio de AI real
+ * Extrae el tipo MIME y los datos base64 de una URL de datos
  */
-async function validateWithAI(proof: ChallengeProof, _challengeDetails: RowDataPacket): Promise<ValidationResult> {
-  // TODO: Integrar con servicio de AI real (OpenAI, Anthropic, etc.)
-  // Por ahora, simulamos una validación básica
+function parseDataUrl(dataUrl: string): { mimeType: string; base64: string } | null {
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (match) {
+    return { mimeType: match[1], base64: match[2] };
+  }
+  return null;
+}
 
-  // En producción, aquí se enviaría:
-  // - El texto del challenge
-  // - Los requisitos específicos
-  // - Las pruebas (texto/imagen)
-  // A un modelo de AI para validación
+/**
+ * Valida las pruebas enviadas para un challenge usando AI (LM Studio con GLM-4V)
+ * Requiere que LM Studio esté disponible - no hay fallback permisivo
+ * Note: This is the legacy validation system, used for revival challenges.
+ * The new pending-redemption system uses proof_image_urls (array of 1-2 images).
+ */
+async function validateWithAI(proof: ChallengeProof, challengeDetails: RowDataPacket): Promise<ValidationResult> {
+  // Check if LM Studio is available
+  const isLMStudioAvailable = await checkLMStudioHealth();
 
-  // Simulación de validación
-  const hasText = proof.proof_text && proof.proof_text.length > 20;
-  const hasImage = proof.proof_image_url && proof.proof_image_url.length > 0;
-
-  // Lógica temporal de validación
-  if (proof.proof_type === 'both' && hasText && hasImage) {
-    return {
-      is_valid: true,
-      confidence_score: 0.85,
-      reasoning: 'Pruebas de texto e imagen proporcionadas. Validación aprobada.',
-    };
-  } else if (proof.proof_type === 'text' && hasText) {
-    return {
-      is_valid: true,
-      confidence_score: 0.75,
-      reasoning: 'Descripción detallada proporcionada. Validación aprobada.',
-    };
-  } else if (proof.proof_type === 'image' && hasImage) {
-    return {
-      is_valid: true,
-      confidence_score: 0.7,
-      reasoning: 'Evidencia fotográfica proporcionada. Validación aprobada.',
-    };
+  if (!isLMStudioAvailable) {
+    console.error('[ChallengeValidation] LM Studio not available');
+    throw new Error('Servicio de validación AI no disponible. Intenta más tarde.');
   }
 
+  // Prepare image data if available (legacy: single image)
+  const proofImages: Array<{ base64: string; mimeType: string }> = [];
+
+  if (proof.proof_image_base64) {
+    // Image already in base64 format
+    proofImages.push({ base64: proof.proof_image_base64, mimeType: 'image/jpeg' });
+  } else if (proof.proof_image_url) {
+    // Check if it's a data URL
+    const parsed = parseDataUrl(proof.proof_image_url);
+    if (parsed) {
+      proofImages.push({ base64: parsed.base64, mimeType: parsed.mimeType });
+    }
+    // Note: For external URLs, we'd need to fetch and convert to base64
+    // For now, we only support data URLs and direct base64
+  }
+
+  // Call LM Studio for validation
+  const result = await validateChallengeWithAI({
+    challengeTitle: challengeDetails.title || 'Challenge',
+    challengeDescription: challengeDetails.description || '',
+    challengeDifficulty: challengeDetails.difficulty || 'medium',
+    proofText: proof.proof_text,
+    proofImages: proofImages.length > 0 ? proofImages : undefined,
+  });
+
   return {
-    is_valid: false,
-    confidence_score: 0.2,
-    reasoning: 'Pruebas insuficientes o no cumplen con los requisitos del reto.',
+    is_valid: result.isValid,
+    confidence_score: result.confidenceScore,
+    reasoning: result.reasoning,
   };
 }
 
@@ -87,8 +101,8 @@ export async function submitChallengeProof(
       `SELECT uc.*, c.title, c.description, c.difficulty
        FROM USER_CHALLENGES uc
        JOIN CHALLENGES c ON uc.challenge_id = c.id
-       WHERE uc.id = UUID_TO_BIN(?)
-       AND uc.user_id = UUID_TO_BIN(?)
+       WHERE uc.id = ?
+       AND uc.user_id = ?
        AND uc.status = 'assigned'`,
       [userChallengeId, userId],
     );
@@ -102,7 +116,7 @@ export async function submitChallengeProof(
     }
 
     // 2. Verificar que el usuario no tiene vidas
-    const [users] = await connection.execute<RowDataPacket[]>('SELECT lives FROM USERS WHERE id = UUID_TO_BIN(?)', [
+    const [users] = await connection.execute<RowDataPacket[]>('SELECT lives FROM USERS WHERE id = ?', [
       userId,
     ]);
 
@@ -145,7 +159,7 @@ export async function submitChallengeProof(
     await connection.execute(
       `INSERT INTO CHALLENGE_PROOFS
        (id, user_challenge_id, proof_text, proof_image_url, proof_type, validation_status)
-       VALUES (UUID_TO_BIN(?), UUID_TO_BIN(?), ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?)`,
       [proofId, userChallengeId, proofText, proofImageUrl, proofType, 'pending'],
     );
 
@@ -159,7 +173,7 @@ export async function submitChallengeProof(
        SET validation_status = ?,
            validation_result = ?,
            validated_at = NOW()
-       WHERE id = UUID_TO_BIN(?)`,
+       WHERE id = ?`,
       [validationStatus, JSON.stringify(validationResult), proofId],
     );
 
@@ -170,7 +184,7 @@ export async function submitChallengeProof(
         `UPDATE USER_CHALLENGES
          SET status = 'completed',
              completed_at = NOW()
-         WHERE id = UUID_TO_BIN(?)`,
+         WHERE id = ?`,
         [userChallengeId],
       );
 
@@ -179,7 +193,7 @@ export async function submitChallengeProof(
       await connection.execute(
         `INSERT INTO LIFE_HISTORY
          (id, user_id, lives_change, current_lives, reason, related_user_challenge_id, created_at)
-         VALUES (UUID_TO_BIN(?), UUID_TO_BIN(?), ?, ?, ?, UUID_TO_BIN(?), NOW())`,
+         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
         [historyId, userId, 0, 0, 'challenge_completed', userChallengeId],
       );
 
@@ -223,8 +237,8 @@ export async function getChallengeProofStatus(userId: string, userChallengeId: s
       `SELECT cp.*
        FROM CHALLENGE_PROOFS cp
        JOIN USER_CHALLENGES uc ON cp.user_challenge_id = uc.id
-       WHERE cp.user_challenge_id = UUID_TO_BIN(?)
-       AND uc.user_id = UUID_TO_BIN(?)
+       WHERE cp.user_challenge_id = ?
+       AND uc.user_id = ?
        ORDER BY cp.created_at DESC
        LIMIT 1`,
       [userChallengeId, userId],
@@ -242,7 +256,11 @@ export async function getChallengeProofStatus(userId: string, userChallengeId: s
       proof_image_url: proof.proof_image_url,
       proof_type: proof.proof_type,
       validation_status: proof.validation_status,
-      validation_result: proof.validation_result ? JSON.parse(proof.validation_result) : undefined,
+      // LOW FIX: Safe JSON.parse with try-catch to handle corrupted data
+      validation_result: proof.validation_result ? (() => {
+        try { return JSON.parse(proof.validation_result); }
+        catch { return undefined; }
+      })() : undefined,
       validated_at: proof.validated_at,
       created_at: proof.created_at,
     };
@@ -285,7 +303,7 @@ export async function getAvailableChallengesForRevival(userId: string): Promise<
        FROM USER_CHALLENGES uc
        JOIN CHALLENGES c ON uc.challenge_id = c.id
        JOIN HABITS h ON uc.habit_id = h.id
-       WHERE uc.user_id = UUID_TO_BIN(?)
+       WHERE uc.user_id = ?
        AND uc.status = 'assigned'
        AND c.is_active = 1`,
       [userId],

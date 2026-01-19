@@ -12,13 +12,17 @@ export interface RefreshToken {
 
 export class RefreshTokenModel {
   static async create(refreshToken: Omit<RefreshToken, 'id' | 'created_at'>): Promise<RefreshToken> {
-    const newRefreshToken: RefreshToken = {
-      id: uuidv4(),
-      ...refreshToken,
-      created_at: new Date(),
-    };
-    await pool.query('INSERT INTO REFRESH_TOKENS SET ?', newRefreshToken);
-    return newRefreshToken;
+    const id = uuidv4();
+    const created_at = new Date();
+
+    // HIGH FIX: Use explicit parameterized query instead of SET ? shorthand
+    await pool.query(
+      `INSERT INTO REFRESH_TOKENS (id, user_id, token, expires_at, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [id, refreshToken.user_id, refreshToken.token, refreshToken.expires_at, created_at],
+    );
+
+    return { id, ...refreshToken, created_at };
   }
 
   static async findByToken(token: string): Promise<RefreshToken | undefined> {

@@ -8,7 +8,7 @@ import { User } from '../../models/user.model';
 export const createTestUser = (overrides?: Partial<User>): User => {
   const defaultUser: User = {
     id: '12345678-1234-1234-1234-123456789abc',
-    name: 'Test User',
+    username: 'testuser',
     email: 'test@example.com',
     password_hash: bcrypt.hashSync('password123', 10),
     lives: 5,

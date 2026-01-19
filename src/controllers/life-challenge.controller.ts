@@ -52,6 +52,7 @@ export const redeemLifeChallenge = async (req: AuthRequest, res: Response) => {
       res.status(400).json({
         message: result.message,
         success: false,
+        ...(result.code && { code: result.code }),
       });
     }
   } catch (error) {

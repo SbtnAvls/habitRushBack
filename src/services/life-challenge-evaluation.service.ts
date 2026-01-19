@@ -37,7 +37,7 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
     const [habits] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as habit_count
        FROM HABITS
-       WHERE user_id = UUID_TO_BIN(?)
+       WHERE user_id = ?
        AND is_active = 1
        AND start_date <= ?`,
       [userId, format(lastWeekStart, 'yyyy-MM-dd')],
@@ -50,7 +50,7 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
     const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as lost_lives_count
        FROM LIFE_HISTORY
-       WHERE user_id = UUID_TO_BIN(?)
+       WHERE user_id = ?
        AND reason = 'habit_missed'
        AND created_at BETWEEN ? AND ?`,
       [userId, format(lastWeekStart, 'yyyy-MM-dd'), format(lastWeekEnd, 'yyyy-MM-dd 23:59:59')],
@@ -73,7 +73,7 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
     const [habits] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as habit_count
        FROM HABITS
-       WHERE user_id = UUID_TO_BIN(?)
+       WHERE user_id = ?
        AND is_active = 1
        AND start_date <= ?`,
       [userId, format(lastMonthStart, 'yyyy-MM-dd')],
@@ -86,7 +86,7 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
     const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as lost_lives_count
        FROM LIFE_HISTORY
-       WHERE user_id = UUID_TO_BIN(?)
+       WHERE user_id = ?
        AND reason = 'habit_missed'
        AND created_at BETWEEN ? AND ?`,
       [userId, format(lastMonthStart, 'yyyy-MM-dd'), format(lastMonthEnd, 'yyyy-MM-dd 23:59:59')],
@@ -100,7 +100,7 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
     const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as late_completions
        FROM HABIT_COMPLETIONS
-       WHERE user_id = UUID_TO_BIN(?)
+       WHERE user_id = ?
        AND completed = 1
        AND TIME(completed_at) >= '23:00:00'`,
       [userId],
@@ -114,7 +114,7 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
     const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as early_completions
        FROM HABIT_COMPLETIONS
-       WHERE user_id = UUID_TO_BIN(?)
+       WHERE user_id = ?
        AND completed = 1
        AND TIME(completed_at) <= '06:00:00'`,
       [userId],
@@ -136,7 +136,7 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
     const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(DISTINCT h.id) as completed_habits
        FROM HABITS h
-       WHERE h.user_id = UUID_TO_BIN(?)
+       WHERE h.user_id = ?
        AND h.is_active = 1
        AND h.start_date <= ?
        AND NOT EXISTS (
@@ -166,7 +166,7 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
     const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as target_reached
        FROM HABITS h
-       WHERE h.user_id = UUID_TO_BIN(?)
+       WHERE h.user_id = ?
        AND h.target_date IS NOT NULL
        AND h.target_date <= CURDATE()
        AND DATEDIFF(h.target_date, h.start_date) >= 120
@@ -188,7 +188,7 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
       `SELECT COUNT(DISTINCT lcr.life_challenge_id) as redeemed_once_challenges
        FROM LIFE_CHALLENGE_REDEMPTIONS lcr
        JOIN LIFE_CHALLENGES lc ON lcr.life_challenge_id = lc.id
-       WHERE lcr.user_id = UUID_TO_BIN(?)
+       WHERE lcr.user_id = ?
        AND lc.redeemable_type = 'once'`,
       [userId],
     );
@@ -202,7 +202,7 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
 
     // Verificar que la cuenta tenga al menos 60 días de antigüedad
     const [accountAge] = await connection.execute<RowDataPacket[]>(
-      `SELECT created_at FROM USERS WHERE id = UUID_TO_BIN(?)`,
+      `SELECT created_at FROM USERS WHERE id = ?`,
       [userId],
     );
 
@@ -223,7 +223,7 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
     const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as zero_lives_moments
        FROM LIFE_HISTORY
-       WHERE user_id = UUID_TO_BIN(?)
+       WHERE user_id = ?
        AND current_lives = 0
        AND created_at >= ?`,
       [userId, format(twoMonthsAgo, 'yyyy-MM-dd')],
@@ -238,7 +238,7 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
       `SELECT SUM(hc.progress_value) as total_minutes
        FROM HABIT_COMPLETIONS hc
        JOIN HABITS h ON hc.habit_id = h.id
-       WHERE hc.user_id = UUID_TO_BIN(?)
+       WHERE hc.user_id = ?
        AND h.progress_type = 'time'
        AND hc.completed = 1
        GROUP BY h.id
@@ -259,7 +259,7 @@ const verificationFunctions: { [key: string]: (userId: string, connection: PoolC
     const [result] = await connection.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as notes_count
        FROM HABIT_COMPLETIONS
-       WHERE user_id = UUID_TO_BIN(?)
+       WHERE user_id = ?
        AND notes IS NOT NULL
        AND notes != ''`,
       [userId],
@@ -292,8 +292,8 @@ export async function evaluateLifeChallenges(userId: string): Promise<UserLifeCh
       // 2. Verificar si ya fue redimido (para challenges 'once')
       const [redemptions] = await connection.execute<RowDataPacket[]>(
         `SELECT * FROM LIFE_CHALLENGE_REDEMPTIONS
-         WHERE user_id = UUID_TO_BIN(?)
-         AND life_challenge_id = UUID_TO_BIN(?)
+         WHERE user_id = ?
+         AND life_challenge_id = ?
          ORDER BY redeemed_at DESC
          LIMIT 1`,
         [userId, challengeId],
@@ -409,7 +409,7 @@ export async function redeemLifeChallengeWithValidation(
 
     // 2. Obtener información del usuario
     const [users] = await connection.execute<RowDataPacket[]>(
-      'SELECT lives, max_lives FROM USERS WHERE id = UUID_TO_BIN(?)',
+      'SELECT lives, max_lives FROM USERS WHERE id = ?',
       [userId],
     );
 
@@ -454,14 +454,14 @@ export async function redeemLifeChallengeWithValidation(
     const actualLivesGained = newLives - currentLives;
 
     // 3. Actualizar vidas del usuario
-    await connection.execute('UPDATE USERS SET lives = ? WHERE id = UUID_TO_BIN(?)', [newLives, userId]);
+    await connection.execute('UPDATE USERS SET lives = ? WHERE id = ?', [newLives, userId]);
 
     // 3.5. If user was dead (0 lives) and now has lives, reactivate habits
     if (currentLives === 0 && newLives > 0) {
       await connection.execute(
         `UPDATE HABITS
          SET is_active = 1, disabled_at = NULL, disabled_reason = NULL
-         WHERE user_id = UUID_TO_BIN(?)
+         WHERE user_id = ?
          AND disabled_reason = 'no_lives'
          AND deleted_at IS NULL`,
         [userId],
@@ -473,7 +473,7 @@ export async function redeemLifeChallengeWithValidation(
     await connection.execute(
       `INSERT INTO LIFE_CHALLENGE_REDEMPTIONS
        (id, user_id, life_challenge_id, lives_gained, redeemed_at)
-       VALUES (UUID_TO_BIN(?), UUID_TO_BIN(?), UUID_TO_BIN(?), ?, NOW())`,
+       VALUES (?, ?, ?, ?, NOW())`,
       [redemptionId, userId, lifeChallengeId, actualLivesGained],
     );
 
@@ -482,7 +482,7 @@ export async function redeemLifeChallengeWithValidation(
     await connection.execute(
       `INSERT INTO LIFE_HISTORY
        (id, user_id, lives_change, current_lives, reason, related_life_challenge_id, created_at)
-       VALUES (UUID_TO_BIN(?), UUID_TO_BIN(?), ?, ?, ?, UUID_TO_BIN(?), NOW())`,
+       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
       [historyId, userId, actualLivesGained, newLives, 'life_challenge_redeemed', lifeChallengeId],
     );
 

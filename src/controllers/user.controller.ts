@@ -5,6 +5,11 @@ import { AuthRequest } from '../middleware/auth.middleware';
 const ALLOWED_THEMES = ['light', 'dark'];
 const ALLOWED_FONT_SIZES = ['small', 'medium', 'large'];
 
+// MEDIUM FIX: Username validation constants
+const USERNAME_MIN_LENGTH = 2;
+const USERNAME_MAX_LENGTH = 30;
+const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/; // Alphanumeric and underscores only
+
 export const getMe = async (req: AuthRequest, res: Response) => {
   const userId = req.user?.id;
 
@@ -30,14 +35,14 @@ export const getMe = async (req: AuthRequest, res: Response) => {
 
 export const updateMe = async (req: AuthRequest, res: Response) => {
   const userId = req.user?.id;
-  const { name, theme, font_size } = req.body;
+  const { username, theme, font_size } = req.body;
 
   if (!userId) {
     return res.status(401).json({ message: 'Not authenticated' });
   }
 
-  if (!name && !theme && !font_size) {
-    return res.status(400).json({ message: 'At least one field (name, theme, font_size) is required' });
+  if (!username && !theme && !font_size) {
+    return res.status(400).json({ message: 'At least one field (username, theme, font_size) is required' });
   }
 
   if (theme && !ALLOWED_THEMES.includes(theme)) {
@@ -48,6 +53,26 @@ export const updateMe = async (req: AuthRequest, res: Response) => {
     return res.status(400).json({ message: 'Invalid font_size provided' });
   }
 
+  // MEDIUM FIX: Validate username format and length
+  if (username) {
+    if (typeof username !== 'string') {
+      return res.status(400).json({ message: 'Username must be a string' });
+    }
+    const trimmedUsername = username.trim();
+    if (trimmedUsername.length < USERNAME_MIN_LENGTH || trimmedUsername.length > USERNAME_MAX_LENGTH) {
+      return res.status(400).json({
+        message: `Username must be between ${USERNAME_MIN_LENGTH} and ${USERNAME_MAX_LENGTH} characters`,
+        min_length: USERNAME_MIN_LENGTH,
+        max_length: USERNAME_MAX_LENGTH,
+      });
+    }
+    if (!USERNAME_REGEX.test(trimmedUsername)) {
+      return res.status(400).json({
+        message: 'Username can only contain letters, numbers, and underscores',
+      });
+    }
+  }
+
   try {
     const user = await UserModel.findById(userId);
     if (!user) {
@@ -55,8 +80,8 @@ export const updateMe = async (req: AuthRequest, res: Response) => {
     }
 
     const updates: Partial<User> = {};
-    if (name) {
-      updates.name = name;
+    if (username) {
+      updates.username = username.trim();
     }
     if (theme) {
       updates.theme = theme;

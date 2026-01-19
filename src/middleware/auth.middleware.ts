@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { TokenBlacklistModel } from '../models/token-blacklist.model';
+import { getJwtSecret } from '../config/secrets';
 
 // Extended Request type with user information from JWT
 export interface AuthRequest extends Request {
@@ -20,8 +21,9 @@ export const authMiddleware = async (req: AuthRequest, res: Response, next: Next
   }
 
   try {
-    // Verify token signature and expiration
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret') as {
+    // CRITICAL FIX: Use secure secret getter instead of hardcoded fallback
+    // LOW FIX: Explicitly specify allowed algorithms to prevent algorithm confusion attacks
+    const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] }) as {
       id: string;
       iat?: number;
       exp?: number;

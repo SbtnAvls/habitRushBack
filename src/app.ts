@@ -18,21 +18,92 @@ import { dailyEvaluationService } from './services/daily-evaluation.service';
 import { validationProcessorService } from './services/validation-processor.service';
 import { leagueSchedulerService } from './services/league-scheduler.service';
 import { cronCatchUpService } from './services/cron-catchup.service';
+import { TokenBlacklistModel } from './models/token-blacklist.model';
+import { RefreshTokenModel } from './models/refresh-token.model';
 import { setupSwagger } from './swagger';
 
-import express, { Application, Request, Response } from 'express';
+import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import path from 'path';
+import crypto from 'crypto';
 
 const app: Application = express();
 const port: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-// Middlewares
-app.use(cors()); // Enable CORS for all origins
-app.use(express.json());
+// CRITICAL FIX: Validate required environment variables in production
+// MEDIUM FIX: Added REFRESH_TOKEN_SECRET to required vars
+if (process.env.NODE_ENV === 'production') {
+  const requiredEnvVars = ['ADMIN_API_KEY', 'JWT_SECRET', 'REFRESH_TOKEN_SECRET'];
+  const missingVars = requiredEnvVars.filter(v => !process.env[v]);
+  if (missingVars.length > 0) {
+    console.error(`[FATAL] Missing required environment variables: ${missingVars.join(', ')}`);
+    process.exit(1);
+  }
+}
 
-// Serve uploaded proof images (for admin dashboard)
-app.use('/uploads/proofs', express.static(path.join(process.cwd(), 'uploads', 'proofs')));
+// HIGH FIX: Configure CORS with allowed origins
+const corsOptions: cors.CorsOptions = {
+  origin: process.env.CORS_ALLOWED_ORIGINS
+    ? process.env.CORS_ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+    : process.env.NODE_ENV === 'production'
+      ? false // Reject all in production if not configured
+      : true, // Allow all in development
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Admin-Key'],
+};
+
+// Middlewares
+
+// MEDIUM FIX: Add Helmet security headers
+app.use(helmet({
+  contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false, // Disable CSP in dev for Swagger
+  crossOriginEmbedderPolicy: false, // Allow embedding for Swagger UI
+}));
+
+app.use(cors(corsOptions));
+
+// HIGH FIX: Increased body limit to handle base64-encoded proof images
+// (2x5MB images = 10MB, plus ~33% base64 overhead = ~13.3MB, rounded up to 15MB)
+// Original 1MB limit was too restrictive for image uploads
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+
+// MEDIUM FIX: Admin authentication middleware for uploads
+// Uses constant-time comparison to prevent timing attacks
+const uploadsAdminAuth = (req: Request, res: Response, next: NextFunction) => {
+  const adminKey = req.headers['x-admin-key'] as string;
+  const expectedKey = process.env.ADMIN_API_KEY;
+
+  if (!expectedKey) {
+    // In development without ADMIN_API_KEY, allow access
+    if (process.env.NODE_ENV !== 'production') {
+      return next();
+    }
+    return res.status(500).json({ message: 'Server configuration error' });
+  }
+
+  if (!adminKey) {
+    return res.status(401).json({ message: 'Admin authentication required' });
+  }
+
+  // MEDIUM FIX: Use crypto.timingSafeEqual for proper constant-time comparison
+  const providedHash = crypto.createHash('sha256').update(adminKey).digest();
+  const expectedHash = crypto.createHash('sha256').update(expectedKey).digest();
+
+  if (!crypto.timingSafeEqual(providedHash, expectedHash)) {
+    return res.status(403).json({ message: 'Invalid admin key' });
+  }
+
+  next();
+};
+
+// Serve uploaded proof images (for admin dashboard) - MEDIUM FIX: Added authentication
+app.use('/uploads/proofs', uploadsAdminAuth, express.static(path.join(process.cwd(), 'uploads', 'proofs'), {
+  dotfiles: 'deny', // Deny access to dotfiles
+  index: false, // Disable directory indexing
+}));
 
 // Swagger Documentation
 setupSwagger(app);
@@ -84,6 +155,29 @@ app.listen(port, () => {
         console.error('Error in cron catch-up:', error);
       });
     }, 5000); // 5 second delay
+
+    // MEDIUM FIX: Schedule token cleanup every hour to remove expired tokens
+    console.warn('Starting token cleanup scheduler...');
+    const TOKEN_CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour
+    setInterval(async () => {
+      try {
+        await TokenBlacklistModel.deleteExpired();
+        await RefreshTokenModel.deleteExpired();
+        console.warn('[TokenCleanup] Expired tokens cleaned');
+      } catch (error) {
+        console.error('[TokenCleanup] Error cleaning expired tokens:', error);
+      }
+    }, TOKEN_CLEANUP_INTERVAL);
+    // Run once at startup after a delay
+    setTimeout(async () => {
+      try {
+        await TokenBlacklistModel.deleteExpired();
+        await RefreshTokenModel.deleteExpired();
+        console.warn('[TokenCleanup] Initial cleanup completed');
+      } catch (error) {
+        console.error('[TokenCleanup] Error in initial cleanup:', error);
+      }
+    }, 10000); // 10 second delay
 
     // Opcional: Ejecutar inmediatamente en desarrollo para pruebas
     if (process.env.NODE_ENV === 'development') {

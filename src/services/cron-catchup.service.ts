@@ -38,18 +38,39 @@ class CronCatchUpService {
 
   /**
    * Load cron configuration from file
+   * CRITICAL FIX: Added try-catch for JSON.parse and file read operations
    */
   private loadConfig(): CronConfig {
     if (this.config) return this.config;
 
     const configPath = path.join(process.cwd(), 'cron.config.json');
-    const rawConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+
+    // CRITICAL FIX: Check if file exists before reading
+    if (!fs.existsSync(configPath)) {
+      throw new Error(`Cron config file not found: ${configPath}`);
+    }
+
+    let rawConfig: CronConfig;
+    try {
+      const fileContent = fs.readFileSync(configPath, 'utf-8');
+      rawConfig = JSON.parse(fileContent);
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        throw new Error(`Invalid JSON in cron config file: ${error.message}`);
+      }
+      throw new Error(`Failed to read cron config file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    // CRITICAL FIX: Validate required structure
+    if (!rawConfig.jobs || typeof rawConfig.jobs !== 'object') {
+      throw new Error('Invalid cron config: missing or invalid "jobs" property');
+    }
 
     // Replace environment variables
     this.baseUrl = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
     this.adminKey = process.env.ADMIN_API_KEY || '';
 
-    this.config = rawConfig as CronConfig;
+    this.config = rawConfig;
     return this.config;
   }
 

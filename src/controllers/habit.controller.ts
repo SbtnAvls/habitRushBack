@@ -7,6 +7,17 @@ import { AuthRequest } from '../middleware/auth.middleware';
 const ALLOWED_FREQUENCY_TYPES = ['daily', 'weekly', 'custom'];
 const ALLOWED_PROGRESS_TYPES = ['yes_no', 'time', 'count'];
 
+// HIGH FIX: Bounds for target_value to prevent unreasonable values
+const TARGET_VALUE_LIMITS = {
+  time: { min: 1, max: 1440 }, // 1 minute to 24 hours (in minutes)
+  count: { min: 1, max: 10000 }, // 1 to 10,000 repetitions
+};
+
+// MEDIUM FIX: Habit name validation constants
+const HABIT_NAME_MIN_LENGTH = 1;
+const HABIT_NAME_MAX_LENGTH = 100;
+const HABIT_DESCRIPTION_MAX_LENGTH = 500;
+
 // Get all habits for the current user
 export const getAllHabits = async (req: AuthRequest, res: Response) => {
   const userId = req.user?.id;
@@ -14,16 +25,8 @@ export const getAllHabits = async (req: AuthRequest, res: Response) => {
     return res.status(401).json({ message: 'Not authenticated' });
   }
   try {
-    const habits = await habitModel.findHabitsByUserId(userId);
-
-    // Add is_blocked field to each habit (checks for active pending redemptions)
-    const habitsWithBlocked = await Promise.all(
-      habits.map(async habit => {
-        const isBlocked = await PendingRedemptionModel.hasActivePending(habit.id, userId);
-        return { ...habit, is_blocked: isBlocked };
-      }),
-    );
-
+    // LOW FIX: Use optimized single query instead of N+1 queries
+    const habitsWithBlocked = await habitModel.findHabitsByUserIdWithBlockedStatus(userId);
     res.json(habitsWithBlocked);
   } catch (_error) {
     res.status(500).json({ message: 'Server error' });
@@ -74,6 +77,23 @@ export const createHabit = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: 'name, frequency_type and progress_type are required' });
     }
 
+    // MEDIUM FIX: Validate habit name length
+    const trimmedName = String(name).trim();
+    if (trimmedName.length < HABIT_NAME_MIN_LENGTH || trimmedName.length > HABIT_NAME_MAX_LENGTH) {
+      return res.status(400).json({
+        message: `Habit name must be between ${HABIT_NAME_MIN_LENGTH} and ${HABIT_NAME_MAX_LENGTH} characters`,
+        max_length: HABIT_NAME_MAX_LENGTH,
+      });
+    }
+
+    // MEDIUM FIX: Validate description length if provided
+    if (description && String(description).length > HABIT_DESCRIPTION_MAX_LENGTH) {
+      return res.status(400).json({
+        message: `Description cannot exceed ${HABIT_DESCRIPTION_MAX_LENGTH} characters`,
+        max_length: HABIT_DESCRIPTION_MAX_LENGTH,
+      });
+    }
+
     if (!ALLOWED_FREQUENCY_TYPES.includes(frequency_type)) {
       return res.status(400).json({ message: 'Invalid frequency_type provided' });
     }
@@ -100,6 +120,16 @@ export const createHabit = async (req: AuthRequest, res: Response) => {
         });
       }
 
+      // HIGH FIX: Validate target_value bounds based on progress_type
+      const limits = TARGET_VALUE_LIMITS[progress_type as keyof typeof TARGET_VALUE_LIMITS];
+      if (numericValue < limits.min || numericValue > limits.max) {
+        return res.status(400).json({
+          message: `target_value for ${progress_type} habits must be between ${limits.min} and ${limits.max}`,
+          min: limits.min,
+          max: limits.max,
+        });
+      }
+
       validatedTargetValue = numericValue;
     }
     // For yes_no habits, target_value should be null (ignored if provided)
@@ -115,13 +145,16 @@ export const createHabit = async (req: AuthRequest, res: Response) => {
     // Determine active_by_user: default to 1 (active) if not provided
     const userActiveChoice = active_by_user === false || active_by_user === 0 ? 0 : 1;
 
+    // Convert target_date string to Date object for MySQL
+    const processedTargetDate = target_date ? new Date(target_date) : undefined;
+
     const newHabit = await habitModel.createHabit({
       user_id: userId,
       name,
       description,
       category_id: category_id || 'health',
       start_date: new Date(),
-      target_date,
+      target_date: processedTargetDate,
       current_streak: 0,
       frequency_type,
       frequency_days_of_week: processedFrequencyDays,
@@ -152,8 +185,13 @@ export const updateHabit = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ message: 'Habit not found' });
     }
 
-    // Detectar si se está desactivando el hábito manualmente
-    const isDeactivating = habit.active_by_user === 1;
+    // MEDIUM FIX: Detect deactivation by checking if user is explicitly setting active_by_user to 0
+    // Previous logic checked if habit WAS active, which incorrectly triggered on any update to an active habit
+    // Note: active_by_user is stored as number (0 or 1) in DB
+    const isDeactivating =
+      habit.active_by_user === 1 &&
+      updates.active_by_user !== undefined &&
+      (updates.active_by_user === 0 || Number(updates.active_by_user) === 0);
 
     if (isDeactivating) {
       // Si se está desactivando, usar la función especial que borra el progreso
@@ -192,6 +230,18 @@ export const updateHabit = async (req: AuthRequest, res: Response) => {
             message: 'target_value must be a positive number',
           });
         }
+
+        // HIGH FIX: Validate target_value bounds based on progress_type
+        const progressTypeKey = effectiveProgressType as keyof typeof TARGET_VALUE_LIMITS;
+        const limits = TARGET_VALUE_LIMITS[progressTypeKey];
+        if (limits && (numericValue < limits.min || numericValue > limits.max)) {
+          return res.status(400).json({
+            message: `target_value for ${effectiveProgressType} habits must be between ${limits.min} and ${limits.max}`,
+            min: limits.min,
+            max: limits.max,
+          });
+        }
+
         updates.target_value = numericValue;
       }
     }

@@ -12,13 +12,17 @@ export interface TokenBlacklist {
 
 export class TokenBlacklistModel {
   static async create(tokenData: Omit<TokenBlacklist, 'id' | 'blacklisted_at'>): Promise<TokenBlacklist> {
-    const newBlacklistEntry: TokenBlacklist = {
-      id: uuidv4(),
-      ...tokenData,
-      blacklisted_at: new Date(),
-    };
-    await pool.query('INSERT INTO TOKEN_BLACKLIST SET ?', newBlacklistEntry);
-    return newBlacklistEntry;
+    const id = uuidv4();
+    const blacklisted_at = new Date();
+
+    // HIGH FIX: Use explicit parameterized query instead of SET ? shorthand
+    await pool.query(
+      `INSERT INTO TOKEN_BLACKLIST (id, token, user_id, expires_at, blacklisted_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [id, tokenData.token, tokenData.user_id, tokenData.expires_at, blacklisted_at],
+    );
+
+    return { id, ...tokenData, blacklisted_at };
   }
 
   static async isBlacklisted(token: string): Promise<boolean> {

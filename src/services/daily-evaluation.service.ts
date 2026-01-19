@@ -1,11 +1,16 @@
 import {
-  evaluateAllUsersDailyHabits,
   evaluateAllUsersWithPendingRedemptions,
   processExpiredPendingRedemptions,
   notifyExpiringRedemptions,
+  deactivateExpiredHabits,
   PendingRedemptionResult,
 } from './habit-evaluation.service';
+import { CronJobExecutionModel } from '../models/cron-job-execution.model';
 import { format } from 'date-fns';
+
+// Job ID for tracking in CRON_JOB_EXECUTIONS table
+const DAILY_EVALUATION_JOB_ID = 'daily-evaluation';
+const DAILY_EVALUATION_JOB_NAME = 'Daily Habit Evaluation';
 
 /**
  * Servicio de evaluación diaria de hábitos
@@ -15,80 +20,8 @@ import { format } from 'date-fns';
 export class DailyEvaluationService {
   private isRunning: boolean = false;
   private lastExecutionDate: string | null = null;
-
-  /**
-   * Ejecuta la evaluación diaria de hábitos para todos los usuarios
-   */
-  async runDailyEvaluation(): Promise<void> {
-    if (this.isRunning) {
-      console.warn('[DailyEvaluation] Already running, skipping...');
-      return;
-    }
-
-    const today = format(new Date(), 'yyyy-MM-dd');
-
-    if (this.lastExecutionDate === today) {
-      console.warn(`[DailyEvaluation] Already executed today (${today}), skipping...`);
-      return;
-    }
-
-    try {
-      this.isRunning = true;
-      console.warn(`[DailyEvaluation] Starting daily evaluation for ${today}`);
-
-      const startTime = Date.now();
-      const results = await evaluateAllUsersDailyHabits();
-      const endTime = Date.now();
-
-      // Calcular estadísticas
-      const totalUsers = results.length;
-      const usersWithMissedHabits = results.filter(r => r.missed_habits.length > 0).length;
-      const totalLivesLost = results.reduce((sum, r) => sum + r.lives_lost, 0);
-      const totalHabitsDisabled = results.reduce((sum, r) => sum + r.habits_disabled.length, 0);
-
-      console.warn(`[DailyEvaluation] Completed in ${endTime - startTime}ms`);
-      console.warn(
-        `[DailyEvaluation] Stats: users=${totalUsers}, missed=${usersWithMissedHabits}, livesLost=${totalLivesLost}, habitsDisabled=${totalHabitsDisabled}`,
-      );
-
-      // Registrar usuarios que perdieron todas sus vidas
-      const usersWithNoLives = results.filter(r => r.new_lives_total === 0);
-      if (usersWithNoLives.length > 0) {
-        console.warn(`[DailyEvaluation] ${usersWithNoLives.length} users have no lives left`);
-      }
-
-      this.lastExecutionDate = today;
-    } catch (error) {
-      console.error('[DailyEvaluation] Error during evaluation:', error);
-      throw error;
-    } finally {
-      this.isRunning = false;
-    }
-  }
-
-  /**
-   * Inicia el servicio con programación automática
-   * @param intervalMs - Intervalo en milisegundos (default: 24 horas)
-   * @param runImmediately - Si debe ejecutarse inmediatamente al iniciar
-   */
-  startScheduled(intervalMs: number = 24 * 60 * 60 * 1000, runImmediately: boolean = false): NodeJS.Timeout {
-    console.warn(`[DailyEvaluation] Starting scheduled service (interval: ${intervalMs}ms)`);
-
-    if (runImmediately) {
-      this.runDailyEvaluation().catch(error => {
-        console.error('[DailyEvaluation] Error in immediate execution:', error);
-      });
-    }
-
-    // Programar ejecución periódica
-    const intervalId = setInterval(() => {
-      this.runDailyEvaluation().catch(error => {
-        console.error('[DailyEvaluation] Error in scheduled execution:', error);
-      });
-    }, intervalMs);
-
-    return intervalId;
-  }
+  // HIGH FIX: Add lock to prevent race condition between isRunning check and set
+  private executionLock: Promise<void> | null = null;
 
   /**
    * Calcula el tiempo hasta la próxima ejecución programada (00:05)
@@ -109,54 +42,48 @@ export class DailyEvaluationService {
   }
 
   /**
-   * Inicia el servicio para ejecutarse diariamente a las 00:05
-   */
-  startDailyAt0005(): NodeJS.Timeout {
-    const timeUntilNext = DailyEvaluationService.getTimeUntilNextExecution();
-
-    console.warn(`[DailyEvaluation] Scheduling first execution in ${Math.round(timeUntilNext / 1000 / 60)} minutes`);
-
-    // Ejecutar la primera vez en el momento programado
-    setTimeout(() => {
-      this.runDailyEvaluation().catch(error => {
-        console.error('[DailyEvaluation] Error in first scheduled execution:', error);
-      });
-
-      // Luego programar cada 24 horas
-      this.startScheduled(24 * 60 * 60 * 1000, false);
-    }, timeUntilNext);
-
-    // Retornar un timeout vacío para mantener consistencia
-    return setTimeout(() => {}, 0);
-  }
-
-  // ============================================================================
-  // NEW PENDING REDEMPTION SYSTEM METHODS
-  // ============================================================================
-
-  /**
-   * Runs the new evaluation system with pending redemptions
+   * Runs the daily evaluation system with pending redemptions
    * 1. First processes expired pending redemptions (from previous days)
    * 2. Then creates new pending redemptions for missed habits
+   * HIGH FIX: Uses execution lock to prevent TOCTOU race condition
    */
   async runDailyEvaluationWithPendingRedemptions(): Promise<void> {
+    // HIGH FIX: Wait for any pending execution to complete first
+    if (this.executionLock) {
+      console.warn('[DailyEvaluation] Waiting for previous execution to complete...');
+      await this.executionLock;
+    }
+
+    // HIGH FIX: Double-check after waiting (another call may have run while we waited)
+    const today = format(new Date(), 'yyyy-MM-dd');
+    if (this.lastExecutionDate === today) {
+      console.warn(`[DailyEvaluation] Already executed today (${today}), skipping...`);
+      return;
+    }
+
     if (this.isRunning) {
       console.warn('[DailyEvaluation] Already running, skipping...');
       return;
     }
 
-    const today = format(new Date(), 'yyyy-MM-dd');
-
-    if (this.lastExecutionDate === today) {
-      console.warn(`[DailyEvaluation] Already executed today (${today}), skipping...`);
-      return;
-    }
+    // HIGH FIX: Set lock immediately before isRunning to prevent race
+    let resolveLock: () => void;
+    this.executionLock = new Promise<void>(resolve => {
+      resolveLock = resolve;
+    });
 
     try {
       this.isRunning = true;
       console.warn(`[DailyEvaluation] Starting daily evaluation for ${today}`);
 
       const startTime = Date.now();
+
+      // Step 0: Deactivate habits with expired target_date
+      console.warn('[DailyEvaluation] Step 0: Deactivating expired habits...');
+      const deactivatedCount = await deactivateExpiredHabits();
+      if (deactivatedCount > 0) {
+        console.warn(`[DailyEvaluation] Deactivated ${deactivatedCount} habits with expired target_date`);
+      }
 
       // Step 1: Process expired pending redemptions (user didn't decide yesterday)
       console.warn('[DailyEvaluation] Step 1: Processing expired pending redemptions...');
@@ -182,13 +109,68 @@ export class DailyEvaluationService {
       console.warn(
         `[DailyEvaluation] Stats: users=${totalUsers}, missed=${usersWithMissedHabits}, pendingCreated=${totalPendingCreated}`,
       );
-
-      this.lastExecutionDate = today;
+      // Record successful execution in database for catch-up tracking
+      await CronJobExecutionModel.recordExecution(
+        DAILY_EVALUATION_JOB_ID,
+        DAILY_EVALUATION_JOB_NAME,
+        'success'
+      );
+      console.warn('[DailyEvaluation] Execution recorded in CRON_JOB_EXECUTIONS');
     } catch (error) {
       console.error('[DailyEvaluation] Error during daily evaluation:', error);
+      // Record failed execution
+      await CronJobExecutionModel.recordExecution(
+        DAILY_EVALUATION_JOB_ID,
+        DAILY_EVALUATION_JOB_NAME,
+        'failed',
+        error instanceof Error ? error.message : 'Unknown error'
+      ).catch(e => console.error('[DailyEvaluation] Failed to record error:', e));
       throw error;
     } finally {
+      // CRITICAL FIX: Always update lastExecutionDate to prevent double-runs on same day
+      // Even if evaluation fails, we don't want to retry the same day's evaluation
+      // (as that could cause double-charging or other issues)
+      this.lastExecutionDate = today;
       this.isRunning = false;
+      // HIGH FIX: Release the lock to allow waiting callers to proceed
+      resolveLock!();
+      this.executionLock = null;
+    }
+  }
+
+  /**
+   * Check if catch-up is needed and run if necessary
+   * This handles the case where the server was down during scheduled execution time
+   */
+  async runCatchUpIfNeeded(): Promise<boolean> {
+    try {
+      const now = new Date();
+      const currentHour = now.getHours();
+
+      // Only consider catch-up if we're past the scheduled time (00:05)
+      // This prevents running before the scheduled time on a fresh start
+      if (currentHour < 1) {
+        console.warn('[DailyEvaluation] Too early for catch-up check (before 01:00), skipping');
+        return false;
+      }
+
+      // Check if evaluation already ran successfully today
+      const hasRunToday = await CronJobExecutionModel.hasRunToday(DAILY_EVALUATION_JOB_ID);
+
+      if (hasRunToday) {
+        console.warn('[DailyEvaluation] Already ran successfully today, no catch-up needed');
+        // Sync in-memory state with database
+        this.lastExecutionDate = format(now, 'yyyy-MM-dd');
+        return false;
+      }
+
+      console.warn('[DailyEvaluation] Catch-up needed! Running missed daily evaluation...');
+      await this.runDailyEvaluationWithPendingRedemptions();
+      console.warn('[DailyEvaluation] Catch-up completed successfully');
+      return true;
+    } catch (error) {
+      console.error('[DailyEvaluation] Error during catch-up:', error);
+      return false;
     }
   }
 
@@ -196,11 +178,21 @@ export class DailyEvaluationService {
    * Start the new pending redemption system
    * Runs daily evaluation at 00:05
    * Also runs hourly notifications for expiring redemptions
+   * CRITICAL FIX: Now includes catch-up logic on startup
    */
   startWithPendingRedemptions(): void {
     const timeUntilNext = DailyEvaluationService.getTimeUntilNextExecution();
 
     console.warn(`[DailyEvaluation] Scheduling daily evaluation in ${Math.round(timeUntilNext / 1000 / 60)} minutes`);
+
+    // CRITICAL FIX: Run catch-up check on startup (with delay to ensure DB is ready)
+    setTimeout(async () => {
+      console.warn('[DailyEvaluation] Running startup catch-up check...');
+      const didCatchUp = await this.runCatchUpIfNeeded();
+      if (didCatchUp) {
+        console.warn('[DailyEvaluation] Catch-up was executed on startup');
+      }
+    }, 8000); // 8 second delay to ensure DB connection is established
 
     setTimeout(() => {
       this.runDailyEvaluationWithPendingRedemptions().catch(error => {

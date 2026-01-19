@@ -82,6 +82,23 @@ export class CronJobExecutionModel {
   }
 
   /**
+   * Check if a job has already run today (based on server timezone)
+   * @param id Job ID
+   * @returns true if job has already executed today
+   */
+  static async hasRunToday(id: string): Promise<boolean> {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT 1 FROM CRON_JOB_EXECUTIONS
+       WHERE id = ?
+       AND DATE(last_execution) = CURDATE()
+       AND last_status = 'success'
+       LIMIT 1`,
+      [id]
+    );
+    return rows.length > 0;
+  }
+
+  /**
    * Get jobs that need catch-up execution
    * @param jobIds List of job IDs to check
    * @param maxAgeHours Maximum hours since last execution

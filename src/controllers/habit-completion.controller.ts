@@ -7,6 +7,36 @@ import { calculateAndUpdateStreak } from '../services/streak-calculation.service
 import { grantHabitCompletionXp, checkAndGrantDailyBonus } from '../services/xp.service';
 import { AuthRequest } from '../middleware/auth.middleware';
 
+// MEDIUM FIX: Date format validation for habit completions
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Validate date string format (YYYY-MM-DD) and check it's a real date
+ */
+function isValidDateString(dateStr: string): boolean {
+  if (typeof dateStr !== 'string' || !DATE_REGEX.test(dateStr)) {
+    return false;
+  }
+
+  const [year, month, day] = dateStr.split('-').map(Number);
+
+  // Check basic ranges
+  if (isNaN(year) || isNaN(month) || isNaN(day)) {
+    return false;
+  }
+  if (month < 1 || month > 12 || day < 1 || day > 31) {
+    return false;
+  }
+
+  // Check days in month
+  const maxDays = new Date(year, month, 0).getDate();
+  if (day > maxDays) {
+    return false;
+  }
+
+  return true;
+}
+
 export class HabitCompletionController {
   static async getCompletionsForHabit(req: AuthRequest, res: Response) {
     try {
@@ -43,6 +73,14 @@ export class HabitCompletionController {
       const { date, completed, progress_type } = req.body;
       if (!date || typeof completed === 'undefined' || !progress_type) {
         return res.status(400).json({ message: 'date, completed and progress_type are required fields.' });
+      }
+
+      // MEDIUM FIX: Validate date format (YYYY-MM-DD)
+      if (!isValidDateString(date)) {
+        return res.status(400).json({
+          message: 'Invalid date format. Expected YYYY-MM-DD (e.g., 2024-01-15)',
+          error_code: 'INVALID_DATE_FORMAT',
+        });
       }
 
       // Check if this habit was already completed for this date (to prevent XP farming)
@@ -121,6 +159,20 @@ export class HabitCompletionController {
         return res.status(400).json({ message: 'notes field is required to update a habit completion.' });
       }
 
+      // MEDIUM FIX: Validate notes length to prevent excessive data storage
+      const NOTES_MAX_LENGTH = 2000;
+      const { notes } = req.body;
+      if (notes !== null && notes !== undefined) {
+        if (typeof notes !== 'string') {
+          return res.status(400).json({ message: 'notes must be a string or null' });
+        }
+        if (notes.length > NOTES_MAX_LENGTH) {
+          return res.status(400).json({
+            message: `notes cannot exceed ${NOTES_MAX_LENGTH} characters`,
+          });
+        }
+      }
+
       const completion = await HabitCompletion.update(id, userId, req.body);
       if (!completion) {
         return res.status(404).json({ message: 'Habit completion not found' });
@@ -172,11 +224,44 @@ export class HabitCompletionController {
       if (!userId) {
         return res.status(401).json({ message: 'Not authenticated' });
       }
-      // Assuming image URL is in the body and there's a service to handle upload
+
+      // HIGH FIX: Validate imageUrl format and size
+      const MAX_URL_LENGTH = 5 * 1024 * 1024; // 5MB for base64
+      const VALID_IMAGE_PREFIXES = ['data:image/jpeg', 'data:image/png', 'data:image/jpg', 'data:image/gif', 'data:image/webp', 'http://', 'https://'];
+
       const { imageUrl, thumbnailUrl } = req.body;
+
       if (!imageUrl) {
         return res.status(400).json({ message: 'imageUrl is required.' });
       }
+
+      if (typeof imageUrl !== 'string') {
+        return res.status(400).json({ message: 'imageUrl must be a string.' });
+      }
+
+      if (imageUrl.length > MAX_URL_LENGTH) {
+        return res.status(400).json({ message: 'Image is too large. Maximum 5MB.' });
+      }
+
+      const isValidUrl = VALID_IMAGE_PREFIXES.some(prefix => imageUrl.startsWith(prefix));
+      if (!isValidUrl) {
+        return res.status(400).json({ message: 'Invalid imageUrl format. Use a valid URL or base64 image.' });
+      }
+
+      // Validate thumbnailUrl if provided
+      if (thumbnailUrl !== undefined && thumbnailUrl !== null) {
+        if (typeof thumbnailUrl !== 'string') {
+          return res.status(400).json({ message: 'thumbnailUrl must be a string.' });
+        }
+        if (thumbnailUrl.length > MAX_URL_LENGTH) {
+          return res.status(400).json({ message: 'Thumbnail is too large.' });
+        }
+        const isValidThumbnail = VALID_IMAGE_PREFIXES.some(prefix => thumbnailUrl.startsWith(prefix));
+        if (!isValidThumbnail) {
+          return res.status(400).json({ message: 'Invalid thumbnailUrl format.' });
+        }
+      }
+
       const image = await CompletionImage.create(id, userId, imageUrl, thumbnailUrl);
       res.status(201).json(image);
     } catch (_error) {

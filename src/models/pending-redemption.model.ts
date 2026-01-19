@@ -41,9 +41,10 @@ export class PendingRedemptionModel {
   static async create(userId: string, habitId: string, failedDate: Date, connection?: PoolConnection): Promise<string> {
     const conn = connection || pool;
     const id = uuidv4();
-    // Set expires_at to end of current day (23:59:59)
+    // Set expires_at to end of current day (23:59:59) in UTC
+    // IMPORTANT: Using UTC to avoid timezone inconsistencies between server and clients
     const expiresAt = new Date();
-    expiresAt.setHours(23, 59, 59, 999);
+    expiresAt.setUTCHours(23, 59, 59, 999);
 
     await conn.query(
       `INSERT INTO PENDING_REDEMPTIONS
@@ -85,13 +86,13 @@ export class PendingRedemptionModel {
 
   /**
    * Get all pending redemptions that should be auto-expired
-   * (created before today - user didn't decide in time, or picked challenge but didn't complete it)
+   * (expires_at has passed - user didn't decide in time, or picked challenge but didn't complete it)
    */
   static async getPendingToAutoExpire(): Promise<PendingRedemption[]> {
     const [rows] = await pool.query<PendingRedemptionRow[]>(
       `SELECT * FROM PENDING_REDEMPTIONS
        WHERE status IN ('pending', 'challenge_assigned')
-       AND DATE(created_at) < CURDATE()`,
+       AND expires_at < NOW()`,
     );
     return rows;
   }
@@ -121,11 +122,11 @@ export class PendingRedemptionModel {
       `SELECT pr.*,
               h.name as habit_name,
               h.category_id as habit_category_id,
-              hc.name as category_name,
+              COALESCE(hc.name, 'Sin categoría') as category_name,
               hc.icon as category_icon
        FROM PENDING_REDEMPTIONS pr
        JOIN HABITS h ON pr.habit_id = h.id
-       JOIN HABIT_CATEGORIES hc ON h.category_id = hc.id
+       LEFT JOIN HABIT_CATEGORIES hc ON h.category_id = hc.id
        WHERE pr.user_id = ? AND pr.status IN ('pending', 'challenge_assigned')
        ORDER BY pr.expires_at ASC`,
       [userId],
@@ -135,9 +136,11 @@ export class PendingRedemptionModel {
 
   /**
    * Find a pending redemption by ID
+   * Optionally accepts a connection for transactional reads
    */
-  static async findById(id: string): Promise<PendingRedemption | null> {
-    const [rows] = await pool.query<PendingRedemptionRow[]>('SELECT * FROM PENDING_REDEMPTIONS WHERE id = ?', [id]);
+  static async findById(id: string, connection?: PoolConnection): Promise<PendingRedemption | null> {
+    const conn = connection || pool;
+    const [rows] = await conn.query<PendingRedemptionRow[]>('SELECT * FROM PENDING_REDEMPTIONS WHERE id = ?', [id]);
     return rows.length > 0 ? rows[0] : null;
   }
 
@@ -147,6 +150,22 @@ export class PendingRedemptionModel {
   static async findByIdAndUser(id: string, userId: string): Promise<PendingRedemption | null> {
     const [rows] = await pool.query<PendingRedemptionRow[]>(
       'SELECT * FROM PENDING_REDEMPTIONS WHERE id = ? AND user_id = ?',
+      [id, userId],
+    );
+    return rows.length > 0 ? rows[0] : null;
+  }
+
+  /**
+   * Find a pending redemption by ID with ownership check and row lock
+   * MUST be used within a transaction to prevent race conditions
+   */
+  static async findByIdAndUserForUpdate(
+    id: string,
+    userId: string,
+    connection: PoolConnection,
+  ): Promise<PendingRedemption | null> {
+    const [rows] = await connection.query<PendingRedemptionRow[]>(
+      'SELECT * FROM PENDING_REDEMPTIONS WHERE id = ? AND user_id = ? FOR UPDATE',
       [id, userId],
     );
     return rows.length > 0 ? rows[0] : null;
@@ -163,6 +182,8 @@ export class PendingRedemptionModel {
        WHERE id = ?`,
       [id],
     );
+    // LOW FIX: Add audit log for critical operation
+    console.info(`[PendingRedemption] Resolved with life: ${id}`);
   }
 
   /**
@@ -177,6 +198,8 @@ export class PendingRedemptionModel {
        WHERE id = ?`,
       [challengeId, id],
     );
+    // LOW FIX: Add audit log for critical operation
+    console.info(`[PendingRedemption] Challenge assigned: ${id} -> challenge ${challengeId}`);
   }
 
   /**
@@ -191,6 +214,8 @@ export class PendingRedemptionModel {
        WHERE id = ?`,
       [id],
     );
+    // LOW FIX: Add audit log for critical operation
+    console.info(`[PendingRedemption] Resolved with challenge: ${id}`);
   }
 
   /**
@@ -216,6 +241,8 @@ export class PendingRedemptionModel {
        WHERE id = ?`,
       [id],
     );
+    // LOW FIX: Add audit log for critical operation
+    console.info(`[PendingRedemption] Marked as expired: ${id}`);
   }
 
   /**
@@ -227,11 +254,11 @@ export class PendingRedemptionModel {
       `SELECT pr.*,
               h.name as habit_name,
               h.category_id as habit_category_id,
-              hc.name as category_name,
+              COALESCE(hc.name, 'Sin categoría') as category_name,
               hc.icon as category_icon
        FROM PENDING_REDEMPTIONS pr
        JOIN HABITS h ON pr.habit_id = h.id
-       JOIN HABIT_CATEGORIES hc ON h.category_id = hc.id
+       LEFT JOIN HABIT_CATEGORIES hc ON h.category_id = hc.id
        WHERE pr.status IN ('pending', 'challenge_assigned')
        AND pr.notified_expiring = FALSE
        AND pr.expires_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL ? HOUR)`,

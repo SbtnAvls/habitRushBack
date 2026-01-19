@@ -5,6 +5,8 @@ import {
   getLifeChallengeStatus,
 } from '../controllers/life-challenge.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
+import { validateIdParam } from '../middleware/uuid-validation.middleware';
+import { lifeChallengeRedeemLimiter, dataFetchLimiter } from '../middleware/rate-limit.middleware';
 
 const router = Router();
 
@@ -12,12 +14,16 @@ const router = Router();
 
 // GET /api/life-challenges - Obtener todos los desafíos de vida disponibles
 // Acepta query param ?withStatus=true para incluir el estado (pendiente/obtenido/redimido)
-router.get('/', authMiddleware, getLifeChallenges);
+// MEDIUM FIX: Added rate limiting
+router.get('/', authMiddleware, dataFetchLimiter, getLifeChallenges);
 
 // GET /api/life-challenges/status - Obtener el estado de todos los Life Challenges del usuario
-router.get('/status', authMiddleware, getLifeChallengeStatus);
+// MEDIUM FIX: Added rate limiting
+router.get('/status', authMiddleware, dataFetchLimiter, getLifeChallengeStatus);
 
 // POST /api/life-challenges/:id/redeem - Canjear un desafío de vida para ganar vidas
-router.post('/:id/redeem', authMiddleware, redeemLifeChallenge);
+// MEDIUM FIX: Added UUID validation for :id parameter
+// LOW FIX: Added rate limiting to prevent abuse
+router.post('/:id/redeem', authMiddleware, lifeChallengeRedeemLimiter, validateIdParam, redeemLifeChallenge);
 
 export default router;

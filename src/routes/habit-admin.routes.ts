@@ -14,12 +14,22 @@ router.use(cronTrackingMiddleware);
 // POST /habits/admin/cleanup-inactive - Eliminar hábitos inactivos
 router.post('/cleanup-inactive', async (req: Request, res: Response) => {
   try {
+    // HIGH FIX: Add maximum days limit to prevent DoS via expensive queries
+    const MAX_DAYS = 365;
     const days = req.query.days ? parseInt(req.query.days as string, 10) : 7;
 
     if (isNaN(days) || days < 1) {
       return res.status(400).json({
         success: false,
         message: 'Invalid days parameter. Must be a positive integer.',
+      });
+    }
+
+    if (days > MAX_DAYS) {
+      return res.status(400).json({
+        success: false,
+        message: `Days parameter cannot exceed ${MAX_DAYS}.`,
+        max_days: MAX_DAYS,
       });
     }
 
