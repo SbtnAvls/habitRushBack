@@ -66,6 +66,7 @@ export const createHabit = async (req: AuthRequest, res: Response) => {
     frequency_days_of_week,
     progress_type,
     target_value,
+    active_by_user,
   } = req.body;
 
   try {
@@ -103,6 +104,17 @@ export const createHabit = async (req: AuthRequest, res: Response) => {
     }
     // For yes_no habits, target_value should be null (ignored if provided)
 
+    // Process frequency_days_of_week: accept both string and array formats
+    let processedFrequencyDays: string | undefined;
+    if (frequency_days_of_week) {
+      processedFrequencyDays = Array.isArray(frequency_days_of_week)
+        ? frequency_days_of_week.join(',')
+        : String(frequency_days_of_week);
+    }
+
+    // Determine active_by_user: default to 1 (active) if not provided
+    const userActiveChoice = active_by_user === false || active_by_user === 0 ? 0 : 1;
+
     const newHabit = await habitModel.createHabit({
       user_id: userId,
       name,
@@ -112,11 +124,11 @@ export const createHabit = async (req: AuthRequest, res: Response) => {
       target_date,
       current_streak: 0,
       frequency_type,
-      frequency_days_of_week: Array.isArray(frequency_days_of_week) ? frequency_days_of_week.join(',') : undefined,
+      frequency_days_of_week: processedFrequencyDays,
       progress_type,
       target_value: validatedTargetValue,
-      is_active: true,
-      active_by_user: 1,
+      is_active: userActiveChoice === 1, // is_active follows active_by_user
+      active_by_user: userActiveChoice,
     });
     res.status(201).json(newHabit);
   } catch (error) {
