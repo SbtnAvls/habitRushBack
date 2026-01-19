@@ -1,11 +1,15 @@
 import express, { Router } from 'express';
 import { adminKeyMiddleware } from '../middleware/auth.middleware';
+import { cronTrackingMiddleware } from '../middleware/cron-tracking.middleware';
 import * as leagueAdminController from '../controllers/league-admin.controller';
 
 const router: Router = express.Router();
 
 // Todas las rutas admin requieren API key (X-Admin-Key header)
 router.use(adminKeyMiddleware);
+
+// Track cron job executions for catch-up system
+router.use(cronTrackingMiddleware);
 
 // POST /leagues/admin/start-week - Iniciar nueva semana
 router.post('/start-week', leagueAdminController.startWeek);

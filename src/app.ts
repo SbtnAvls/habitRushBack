@@ -17,6 +17,7 @@ import socialRoutes from './routes/social.routes';
 import { dailyEvaluationService } from './services/daily-evaluation.service';
 import { validationProcessorService } from './services/validation-processor.service';
 import { leagueSchedulerService } from './services/league-scheduler.service';
+import { cronCatchUpService } from './services/cron-catchup.service';
 import { setupSwagger } from './swagger';
 
 import express, { Application, Request, Response } from 'express';
@@ -75,6 +76,14 @@ app.listen(port, () => {
     // Start league scheduler service (bot XP, positions, weekly processing)
     console.warn('Starting league scheduler service...');
     leagueSchedulerService.start();
+
+    // Run catch-up for missed cron jobs (with delay to ensure DB is ready)
+    setTimeout(() => {
+      console.warn('Running cron job catch-up check...');
+      cronCatchUpService.runCatchUp().catch(error => {
+        console.error('Error in cron catch-up:', error);
+      });
+    }, 5000); // 5 second delay
 
     // Opcional: Ejecutar inmediatamente en desarrollo para pruebas
     if (process.env.NODE_ENV === 'development') {

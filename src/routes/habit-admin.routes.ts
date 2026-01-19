@@ -1,11 +1,15 @@
 import express, { Router, Request, Response } from 'express';
 import { adminKeyMiddleware } from '../middleware/auth.middleware';
+import { cronTrackingMiddleware } from '../middleware/cron-tracking.middleware';
 import { cleanupInactiveHabits } from '../services/habit-cleanup.service';
 
 const router: Router = express.Router();
 
 // Todas las rutas admin requieren API key (X-Admin-Key header)
 router.use(adminKeyMiddleware);
+
+// Track cron job executions for catch-up system
+router.use(cronTrackingMiddleware);
 
 // POST /habits/admin/cleanup-inactive - Eliminar hábitos inactivos
 router.post('/cleanup-inactive', async (req: Request, res: Response) => {
