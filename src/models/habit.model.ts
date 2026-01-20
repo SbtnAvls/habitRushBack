@@ -66,21 +66,22 @@ export const findHabitsByUserId = async (userId: string): Promise<Habit[]> => {
 /**
  * LOW FIX: Optimized query that fetches habits with their blocked status in a single query
  * Avoids N+1 queries when getting all habits with is_blocked field
+ * Uses EXISTS subquery to be compatible with sql_mode=only_full_group_by
  */
 export const findHabitsByUserIdWithBlockedStatus = async (
   userId: string,
 ): Promise<(Habit & { is_blocked: boolean })[]> => {
   const [rows] = await pool.query<RowDataPacket[]>(
     `SELECT h.*,
-            CASE WHEN pr.id IS NOT NULL THEN TRUE ELSE FALSE END as is_blocked
+            EXISTS (
+              SELECT 1 FROM PENDING_REDEMPTIONS pr
+              WHERE pr.habit_id = h.id
+                AND pr.user_id = h.user_id
+                AND pr.status IN ('pending', 'challenge_assigned')
+            ) as is_blocked
      FROM HABITS h
-     LEFT JOIN PENDING_REDEMPTIONS pr
-       ON pr.habit_id = h.id
-       AND pr.user_id = h.user_id
-       AND pr.status IN ('pending', 'challenge_assigned')
      WHERE h.user_id = ?
-       AND h.deleted_at IS NULL
-     GROUP BY h.id`,
+       AND h.deleted_at IS NULL`,
     [userId],
   );
   return rows.map(row => ({
