@@ -270,57 +270,44 @@ export async function getChallengeProofStatus(userId: string, userChallengeId: s
 }
 
 interface AvailableChallenge {
-  user_challenge_id: string;
   challenge_id: string;
   title: string;
   description: string;
   difficulty: string;
   type: string;
   estimated_time: number;
-  habit_name: string;
-  assigned_at: Date;
 }
 
 /**
- * Lista todos los challenges disponibles para un usuario sin vidas
+ * Lista los challenges de penitencia globales disponibles para un usuario sin vidas
+ * Estos son challenges con is_general = TRUE que no dependen de hábitos específicos
  */
-export async function getAvailableChallengesForRevival(userId: string): Promise<AvailableChallenge[]> {
+export async function getAvailableChallengesForRevival(_userId: string): Promise<AvailableChallenge[]> {
   const connection = await pool.getConnection();
 
   try {
-    // Obtener challenges asignados que no han sido completados
+    // Obtener challenges generales (penitencia) activos
     const [challenges] = await connection.execute<RowDataPacket[]>(
       `SELECT
-        uc.id as user_challenge_id,
-        c.id as challenge_id,
-        c.title,
-        c.description,
-        c.difficulty,
-        c.type,
-        c.estimated_time,
-        h.name as habit_name,
-        uc.assigned_at
-       FROM USER_CHALLENGES uc
-       JOIN CHALLENGES c ON uc.challenge_id = c.id
-       JOIN HABITS h ON uc.habit_id = h.id
-       WHERE uc.user_id = ?
-       AND uc.status = 'assigned'
-       AND c.is_active = 1`,
-      [userId],
+        id as challenge_id,
+        title,
+        description,
+        difficulty,
+        type,
+        estimated_time
+       FROM CHALLENGES
+       WHERE is_general = TRUE
+       AND is_active = TRUE
+       ORDER BY difficulty, estimated_time`,
     );
 
     return challenges.map(c => ({
-      user_challenge_id: c.user_challenge_id
-        .toString('hex')
-        .replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5'),
-      challenge_id: c.challenge_id.toString('hex').replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5'),
+      challenge_id: c.challenge_id,
       title: c.title,
       description: c.description,
       difficulty: c.difficulty,
       type: c.type,
       estimated_time: c.estimated_time,
-      habit_name: c.habit_name,
-      assigned_at: c.assigned_at,
     }));
   } finally {
     connection.release();

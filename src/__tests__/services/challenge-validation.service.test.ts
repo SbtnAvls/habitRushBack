@@ -291,31 +291,24 @@ describe('Challenge Validation Service', () => {
   describe('getAvailableChallengesForRevival', () => {
     const userId = 'user-123';
 
-    it('should return assigned challenges for user without lives', async () => {
-      // Mock data must use field names from the SQL query: uc.id as user_challenge_id, c.id as challenge_id
+    it('should return general penance challenges for user without lives', async () => {
       mockConnection.execute.mockResolvedValueOnce([
         [
           {
-            user_challenge_id: Buffer.from('12345678123412341234123456789abc', 'hex'),
-            challenge_id: Buffer.from('abcdef12abcd1234abcd1234abcdef12', 'hex'),
-            title: 'Challenge 1',
-            description: 'Description 1',
-            difficulty: 'easy',
-            type: 'exercise',
-            estimated_time: 30,
-            habit_name: 'Running',
-            assigned_at: new Date(),
+            challenge_id: 'abcdef12-abcd-1234-abcd-1234abcdef12',
+            title: 'Reflexión de fallos',
+            description: 'Escribe una reflexión sobre por qué fallaste',
+            difficulty: 'medium',
+            type: 'mindfulness',
+            estimated_time: 20,
           },
           {
-            user_challenge_id: Buffer.from('22345678123412341234123456789abc', 'hex'),
-            challenge_id: Buffer.from('bbcdef12abcd1234abcd1234abcdef12', 'hex'),
-            title: 'Challenge 2',
-            description: 'Description 2',
-            difficulty: 'medium',
-            type: 'learning',
-            estimated_time: 60,
-            habit_name: 'Reading',
-            assigned_at: new Date(),
+            challenge_id: 'bbcdef12-abcd-1234-abcd-1234abcdef12',
+            title: 'Ejercicio de disciplina',
+            description: 'Completa 50 flexiones y 50 sentadillas',
+            difficulty: 'hard',
+            type: 'exercise',
+            estimated_time: 15,
           },
         ],
       ]);
@@ -323,11 +316,11 @@ describe('Challenge Validation Service', () => {
       const result = await getAvailableChallengesForRevival(userId);
 
       expect(result).toHaveLength(2);
-      expect(result[0].title).toBe('Challenge 1');
-      expect(result[1].difficulty).toBe('medium');
+      expect(result[0].title).toBe('Reflexión de fallos');
+      expect(result[1].difficulty).toBe('hard');
     });
 
-    it('should return empty array when no challenges assigned', async () => {
+    it('should return empty array when no general challenges exist', async () => {
       mockConnection.execute.mockResolvedValueOnce([[]]);
 
       const result = await getAvailableChallengesForRevival(userId);
@@ -335,28 +328,13 @@ describe('Challenge Validation Service', () => {
       expect(result).toEqual([]);
     });
 
-    it('should only return challenges with status assigned', async () => {
-      mockConnection.execute.mockResolvedValueOnce([
-        [
-          {
-            user_challenge_id: Buffer.from('12345678123412341234123456789abc', 'hex'),
-            challenge_id: Buffer.from('abcdef12abcd1234abcd1234abcdef12', 'hex'),
-            title: 'Available Challenge',
-            description: 'Test',
-            difficulty: 'easy',
-            type: 'exercise',
-            estimated_time: 30,
-            habit_name: 'Test Habit',
-            assigned_at: new Date(),
-          },
-        ],
-      ]);
+    it('should only query general challenges (is_general = TRUE)', async () => {
+      mockConnection.execute.mockResolvedValueOnce([[]]);
 
       await getAvailableChallengesForRevival(userId);
 
       expect(mockConnection.execute).toHaveBeenCalledWith(
-        expect.stringContaining("uc.status = 'assigned'"),
-        expect.arrayContaining([userId]),
+        expect.stringContaining('is_general = TRUE'),
       );
     });
 
@@ -366,57 +344,37 @@ describe('Challenge Validation Service', () => {
       await getAvailableChallengesForRevival(userId);
 
       expect(mockConnection.execute).toHaveBeenCalledWith(
-        expect.stringContaining('c.is_active = 1'),
-        expect.any(Array),
+        expect.stringContaining('is_active = TRUE'),
       );
     });
 
-    it('should include habit name in results', async () => {
+    it('should return challenge fields without habit_name or user_challenge_id', async () => {
       mockConnection.execute.mockResolvedValueOnce([
         [
           {
-            user_challenge_id: Buffer.from('12345678123412341234123456789abc', 'hex'),
-            challenge_id: Buffer.from('abcdef12abcd1234abcd1234abcdef12', 'hex'),
+            challenge_id: '12345678-1234-1234-1234-123456789abc',
             title: 'Test Challenge',
-            description: 'Test',
+            description: 'Test description',
             difficulty: 'easy',
             type: 'exercise',
             estimated_time: 30,
-            habit_name: 'My Habit',
-            assigned_at: new Date(),
           },
         ],
       ]);
 
       const result = await getAvailableChallengesForRevival(userId);
 
-      expect(result[0].habit_name).toBe('My Habit');
-    });
-
-    it('should convert buffer IDs to UUIDs', async () => {
-      const ucId = '12345678-1234-1234-1234-123456789abc';
-      const cId = '87654321-4321-4321-4321-cba987654321';
-
-      mockConnection.execute.mockResolvedValueOnce([
-        [
-          {
-            user_challenge_id: Buffer.from(ucId.replace(/-/g, ''), 'hex'),
-            challenge_id: Buffer.from(cId.replace(/-/g, ''), 'hex'),
-            title: 'Test',
-            description: 'Test',
-            difficulty: 'easy',
-            type: 'exercise',
-            estimated_time: 30,
-            habit_name: 'Test Habit',
-            assigned_at: new Date(),
-          },
-        ],
-      ]);
-
-      const result = await getAvailableChallengesForRevival(userId);
-
-      expect(result[0].user_challenge_id).toMatch(/^[a-f0-9-]{36}$/);
-      expect(result[0].challenge_id).toMatch(/^[a-f0-9-]{36}$/);
+      expect(result[0]).toEqual({
+        challenge_id: '12345678-1234-1234-1234-123456789abc',
+        title: 'Test Challenge',
+        description: 'Test description',
+        difficulty: 'easy',
+        type: 'exercise',
+        estimated_time: 30,
+      });
+      // Should NOT have habit_name or user_challenge_id
+      expect(result[0]).not.toHaveProperty('habit_name');
+      expect(result[0]).not.toHaveProperty('user_challenge_id');
     });
   });
 });

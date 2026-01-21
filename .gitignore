@@ -3,7 +3,7 @@ dist
 .env
 crontab.local
 coverage
-
+.claude/
 # Uploaded files (keep directory structure with .gitkeep)
 uploads/**/*
 !uploads/**/.gitkeep

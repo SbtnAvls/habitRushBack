@@ -175,8 +175,8 @@ export const getAvailableForRevival = async (req: AuthRequest, res: Response) =>
         challenges,
         message:
           challenges.length > 0
-            ? 'Completa uno de estos retos con pruebas para revivir'
-            : 'No tienes retos asignados. Asigna un reto primero',
+            ? 'Elige un reto de penitencia, complétalo y envía pruebas para revivir'
+            : 'No hay retos de penitencia disponibles en este momento',
       });
     } finally {
       connection.release();
