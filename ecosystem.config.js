@@ -8,7 +8,7 @@ module.exports = {
       // Environment
       env: {
         NODE_ENV: 'production',
-        PORT: 3000,
+        PORT: 3002,
       },
 
       // Instances (use 1 for cron jobs to avoid duplicate execution)

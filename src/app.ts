@@ -130,7 +130,7 @@ app.get('/', (req: Request, res: Response) => {
   res.send('Welcome to HabitRush API!');
 });
 
-app.listen(port, () => {
+app.listen(port, '0.0.0.0', () => {
   console.warn(`Server is running on port ${port}`);
 
   // Iniciar el servicio de evaluación diaria de hábitos
